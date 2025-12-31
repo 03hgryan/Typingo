@@ -1,9 +1,12 @@
+import type { AudioChunk } from "../audio/types";
+
 export class AudioStreamer {
   private ws?: WebSocket;
   private onMessage?: (data: any) => void;
 
   async connect(url: string, onMessage?: (data: any) => void) {
     this.ws = new WebSocket(url);
+    this.ws.binaryType = "arraybuffer";
     this.onMessage = onMessage;
 
     // Handle incoming messages from server
@@ -28,48 +31,38 @@ export class AudioStreamer {
       console.log("🔌 WebSocket closed");
     };
 
-    await new Promise((resolve) => {
-      this.ws!.onopen = resolve;
+    await new Promise((res) => {
+      this.ws!.onopen = res;
     });
 
     console.log("✅ WebSocket connected to", url);
   }
 
-  send(chunk: any) {
+  send(chunk: AudioChunk) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    // Send metadata first (for sequencing)
+    // Binary framing: Send metadata as JSON, then PCM as binary
+    // Server should expect this two-message protocol per chunk
+
+    // 1. Send metadata (small, JSON is fine here)
     this.ws.send(
       JSON.stringify({
         type: "audio_chunk",
-        chunk_index: chunk.chunk_index,
+        start_time_ms: chunk.start_time_ms,
         duration_ms: chunk.duration_ms,
+        pcm_length: chunk.pcm.length,
       })
     );
 
-    // Then send binary PCM data
+    // 2. Send raw PCM binary data (much more efficient than JSON array)
     this.ws.send(chunk.pcm.buffer);
   }
 
   disconnect() {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      console.log("🔌 Sending end_stream signal...");
-
-      // Send end_stream signal before closing (client-driven finalization)
-      this.ws.send(JSON.stringify({ type: "end_stream" }));
-
-      // Give server time to finalize
-      setTimeout(() => {
-        if (this.ws) {
-          console.log("🔌 Closing WebSocket connection...");
-          this.ws.close();
-          this.ws = undefined;
-        }
-      }, 100);
-    } else if (this.ws) {
+    if (this.ws) {
+      console.log("🔌 Closing WebSocket connection...");
       this.ws.close();
       this.ws = undefined;
     }
   }
 }
-

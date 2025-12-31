@@ -1,5 +1,5 @@
 export interface AudioChunk {
   pcm: Int16Array;
-  chunk_index: number;
+  start_time_ms: number;
   duration_ms: number;
 }

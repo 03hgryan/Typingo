@@ -1,5 +1,8 @@
 import type { AudioChunk } from "./types";
 
+// Re-export AudioChunk for convenience
+export type { AudioChunk };
+
 export class AudioCapture {
   private ctx?: AudioContext;
   private workletNode?: AudioWorkletNode;
@@ -8,12 +11,11 @@ export class AudioCapture {
   constructor(private onChunk: (chunk: AudioChunk) => void) {}
 
   async start() {
-    // Clean up existing resources
+    // Clean up existing resources before starting new capture
     if (this.ctx || this.stream || this.workletNode) {
       this.stop();
     }
 
-    // Capture tab audio (must be called from popup/foreground context)
     this.stream = await new Promise<MediaStream>((resolve, reject) => {
       chrome.tabCapture.capture(
         {
@@ -34,8 +36,7 @@ export class AudioCapture {
 
     this.ctx = new AudioContext({ sampleRate: 48000 });
 
-    // Load audioWorklet from public folder
-    await this.ctx.audioWorklet.addModule(chrome.runtime.getURL("public/audioWorklet.js"));
+    await this.ctx.audioWorklet.addModule(chrome.runtime.getURL("audio/audioWorklet.js"));
 
     const source = this.ctx.createMediaStreamSource(this.stream);
 
@@ -45,23 +46,22 @@ export class AudioCapture {
       this.onChunk(e.data as AudioChunk);
     };
 
-    // Connect to worklet for processing
     source.connect(this.workletNode);
-
-    // ALSO connect to speakers so audio isn't muted
-    source.connect(this.ctx.destination);
   }
 
   stop() {
+    // Disconnect and clean up worklet node
     if (this.workletNode) {
       this.workletNode.disconnect();
       this.workletNode.port.onmessage = null;
       this.workletNode = undefined;
     }
 
+    // Stop all media stream tracks
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = undefined;
 
+    // Close audio context
     this.ctx?.close();
     this.ctx = undefined;
   }
