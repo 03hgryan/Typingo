@@ -1,3 +1,4 @@
+// audioCapture.ts
 import type { AudioChunk } from "./types";
 
 export class AudioCapture {

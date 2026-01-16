@@ -1,3 +1,4 @@
+// audioStreamer.ts
 export class AudioStreamer {
   private ws?: WebSocket;
   private onMessage?: (data: any) => void;
@@ -72,4 +73,3 @@ export class AudioStreamer {
     }
   }
 }
-

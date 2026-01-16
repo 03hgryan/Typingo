@@ -1,3 +1,4 @@
+// background.ts
 import { AudioStreamer } from "./stream/audioStreamer";
 
 console.log("Background script is running");
@@ -41,6 +42,16 @@ async function connectWebSocket() {
           .catch((err) => {
             console.log("Popup not available:", err.message);
           });
+      } else if (data.type === "transcript_final") {
+        // Final transcript (on stream end)
+        chrome.runtime
+          .sendMessage({
+            type: "TRANSCRIPT_FINAL",
+            payload: data,
+          })
+          .catch((err) => {
+            console.log("Popup not available:", err.message);
+          });
       }
     });
 
@@ -79,8 +90,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 
   if (msg.type === "AUDIO_CHUNK") {
-    console.log("📨 Received audio chunk from popup");
-    // Forward audio chunk to WebSocket
+    // Forward audio chunk to WebSocket (no logging to reduce noise)
     if (streamer && isConnected) {
       // Convert array back to Int16Array
       const chunk = {

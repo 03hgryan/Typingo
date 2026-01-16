@@ -1,3 +1,4 @@
+// content.ts
 console.log("Content script loaded");
 
 type SegmentID = number;

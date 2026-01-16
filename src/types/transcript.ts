@@ -1,46 +1,74 @@
+// types/transcript.ts
 /**
- * TypeScript types for production-level transcript management.
+ * Types matching the new backend schema.
  *
- * Implements the two-layer model:
- * - FinalizedSegment: Immutable history (Layer 3 from backend)
- * - LiveSegment: Mutable active segment (Layer 2 from backend)
+ * Key concepts:
+ * - WordInfo: A single word with timing and confidence
+ * - LiveSegment: Real-time updates (stable + unstable words)
+ * - FinalizedSegment: Immutable, append-only history
  */
 
-/**
- * Finalized segment - IMMUTABLE, append-only.
- * Received via segments_finalized message.
- */
-export interface FinalizedSegment {
-  segment_index: number; // Monotonic index for stable ordering
-  segment_id: string; // Unique identifier
-  text: string; // Complete finalized text
-  timestamp_ms: number; // Wall-clock timestamp
-  final: true; // Always true for finalized segments
+// === Word-level types ===
+
+export interface WordInfo {
+  word: string;
+  start_ms: number;
+  end_ms: number;
+  probability: number;
 }
 
+// === Segment types ===
+
 /**
- * Live segment - MUTABLE, can change.
- * Received via segments_update message.
+ * Live segment - updates in real-time, may change.
+ *
+ * Backend sends this via "segments_update" message.
  */
 export interface LiveSegment {
-  segment_id: string; // Current segment identifier
-  committed: string; // Stable prefix (won't change within this segment)
-  partial: string; // Unstable suffix (can change)
-  revision: number; // Hypothesis number
-  final: false; // Always false for live segments
+  segment_id: string;
+  revision: number;
+
+  // Structured word data (authoritative)
+  stable_words: WordInfo[];
+  unstable_words: WordInfo[];
+
+  // Convenience rendering (for simple display)
+  committed: string; // rendered_text.stable
+  partial: string; // rendered_text.unstable
+
+  final: boolean;
 }
 
 /**
- * WebSocket message types from backend.
+ * Finalized segment - immutable, append-only.
+ *
+ * Backend sends this via "segments_finalized" message.
  */
-export type SegmentsUpdateMessage = {
+export interface FinalizedSegment {
+  segment_id: string;
+  segment_index: number;
+  text: string;
+  words: WordInfo[];
+  final: boolean;
+}
+
+// === Message types from backend ===
+
+export interface SegmentsUpdateMessage {
   type: "segments_update";
-  segments: [LiveSegment]; // Always single live segment
-};
+  segments: LiveSegment[];
+}
 
-export type SegmentsFinalizedMessage = {
+export interface SegmentsFinalizedMessage {
   type: "segments_finalized";
-  segments: [FinalizedSegment]; // Always single finalized segment
-};
+  segments: FinalizedSegment[];
+}
 
-export type TranscriptMessage = SegmentsUpdateMessage | SegmentsFinalizedMessage;
+export interface TranscriptFinalMessage {
+  type: "transcript_final";
+  transcript: string;
+  words: WordInfo[];
+  segments: FinalizedSegment[];
+}
+
+export type BackendMessage = SegmentsUpdateMessage | SegmentsFinalizedMessage | TranscriptFinalMessage;
