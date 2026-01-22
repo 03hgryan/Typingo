@@ -6,7 +6,7 @@ console.log("Background script is running");
 let streamer: AudioStreamer | null = null;
 let isConnected = false;
 
-const WS_URL = "ws://localhost:8000/ws/stream";
+const WS_URL = "ws://localhost:8000/stt/elevenlabs";
 
 async function connectWebSocket() {
   if (isConnected) {
