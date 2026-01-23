@@ -165,6 +165,16 @@ async function connectWebSocket() {
           .catch((err) => {
             console.log("Side panel not available:", err.message);
           });
+      } else if (data.type === "error") {
+        // General server error
+        chrome.runtime
+          .sendMessage({
+            type: "SERVER_ERROR",
+            error: data.message || data.data?.message || "Server error",
+          })
+          .catch((err) => {
+            console.log("Side panel not available:", err.message);
+          });
       }
     });
 
@@ -176,6 +186,14 @@ async function connectWebSocket() {
   } catch (error) {
     console.error("❌ Failed to connect WebSocket:", error);
     isConnected = false;
+
+    // Notify side panel about connection error
+    chrome.runtime.sendMessage({
+      type: "WS_ERROR",
+      error: String(error),
+    }).catch(() => {});
+
+    throw error; // Re-throw so caller can handle
   }
 }
 
@@ -193,7 +211,7 @@ function disconnectWebSocket() {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "CONNECT_WS") {
     connectWebSocket();
     return false;

@@ -22,6 +22,13 @@
   let logs = $state<string[]>([]);
   let showLogs = $state(false); // Collapsible logs
 
+  // Error state
+  let errorMessage = $state<string | null>(null);
+
+  function clearError() {
+    errorMessage = null;
+  }
+
   // Settings
   let showOriginalInCaption = $state(true); // Show original text in video captions
 
@@ -60,9 +67,12 @@
 
         chrome.runtime.sendMessage({ type: "START_CAPTURE" }, (response) => {
           if (response?.success) {
+            errorMessage = null; // Clear any previous error
             addLog("Capture started (running in background)");
           } else {
-            addLog("Failed to start: " + (response?.error || "Unknown error"));
+            const error = response?.error || "Unknown error";
+            errorMessage = `Failed to start capture: ${error}`;
+            addLog("Failed to start: " + error);
           }
         });
       } catch (error) {
@@ -184,6 +194,7 @@
       // Handle capture state updates from background
       if (message.type === "CAPTURE_STARTED") {
         isCapturing = true;
+        errorMessage = null; // Clear any previous error
         addLog("Capture started (running in background)");
       }
 
@@ -194,7 +205,20 @@
 
       if (message.type === "CAPTURE_ERROR") {
         isCapturing = false;
+        errorMessage = `Capture error: ${message.error}`;
         addLog("Capture error: " + message.error);
+      }
+
+      // Handle WebSocket errors
+      if (message.type === "WS_ERROR") {
+        errorMessage = `Connection error: ${message.error || "Failed to connect to server"}`;
+        addLog("WebSocket error: " + message.error);
+      }
+
+      // Handle server errors
+      if (message.type === "SERVER_ERROR") {
+        errorMessage = `Server error: ${message.error}`;
+        addLog("Server error: " + message.error);
       }
     });
 
@@ -228,6 +252,17 @@
   <button class="capture-btn" class:active={isCapturing} onclick={toggleCapture}>
     {isCapturing ? "Stop Capture" : "Start Capture"}
   </button>
+
+  <!-- Error Message -->
+  {#if errorMessage}
+    <div class="error-banner">
+      <div class="error-content">
+        <span class="error-icon">!</span>
+        <span class="error-text">{errorMessage}</span>
+      </div>
+      <button class="error-dismiss" onclick={clearError}>×</button>
+    </div>
+  {/if}
 
   <!-- Settings -->
   <div class="settings-section">
@@ -289,6 +324,8 @@
   .container {
     padding: 1rem;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-width: 320px;
+    width: 100%;
     height: 100vh;
     overflow-y: auto;
     box-sizing: border-box;
@@ -341,6 +378,63 @@
     50% {
       opacity: 0.8;
     }
+  }
+
+  /* Error banner styles */
+  .error-banner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid #ef4444;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .error-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    flex: 1;
+  }
+
+  .error-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: #ef4444;
+    color: white;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+
+  .error-text {
+    color: #991b1b;
+    font-size: 0.85rem;
+    line-height: 1.4;
+  }
+
+  .error-dismiss {
+    background: none;
+    border: none;
+    color: #991b1b;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+
+  .error-dismiss:hover {
+    opacity: 1;
   }
 
   /* Settings styles */
