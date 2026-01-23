@@ -7,13 +7,58 @@ let streamer: AudioStreamer | null = null;
 let isConnected = false;
 let isCapturing = false;
 let activeTabId: number | null = null;
+let hasOffscreenDocument = false;
+
+// Caption settings
+let showOriginalInCaption = true;
+
+// Offscreen document management
+const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
+
+async function createOffscreenDocument() {
+  if (hasOffscreenDocument) {
+    return;
+  }
+
+  try {
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_DOCUMENT_PATH,
+      reasons: [chrome.offscreen.Reason.USER_MEDIA, chrome.offscreen.Reason.AUDIO_PLAYBACK],
+      justification: "Audio capture and playback for speech-to-text translation",
+    });
+    hasOffscreenDocument = true;
+    console.log("Offscreen document created");
+  } catch (error) {
+    // Document might already exist
+    if (String(error).includes("single offscreen document")) {
+      hasOffscreenDocument = true;
+    } else {
+      console.error("Failed to create offscreen document:", error);
+      throw error;
+    }
+  }
+}
+
+async function closeOffscreenDocument() {
+  if (!hasOffscreenDocument) {
+    return;
+  }
+
+  try {
+    await chrome.offscreen.closeDocument();
+    hasOffscreenDocument = false;
+    console.log("Offscreen document closed");
+  } catch (error) {
+    console.error("Failed to close offscreen document:", error);
+  }
+}
 
 // Helper to send caption to content script
 function sendCaptionToTab(source: string, translated: string, isStreaming: boolean) {
   if (activeTabId) {
     chrome.tabs.sendMessage(activeTabId, {
       type: "SHOW_CAPTION",
-      source,
+      source: showOriginalInCaption ? source : "",
       translated,
       isStreaming,
     }).catch(() => {});
@@ -191,6 +236,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Connect WebSocket first
         await connectWebSocket();
 
+        // Create offscreen document for audio capture
+        await createOffscreenDocument();
+
         // Get media stream ID for tab capture
         chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (streamId) => {
           if (chrome.runtime.lastError) {
@@ -201,11 +249,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
           isCapturing = true;
 
-          // Send stream ID to side panel to start audio capture
+          // Send stream ID to offscreen document to start audio capture
           chrome.runtime.sendMessage({
-            type: "START_CAPTURE_WITH_STREAM_ID",
+            type: "START_OFFSCREEN_CAPTURE",
             streamId,
           }).catch(() => {});
+
+          // Notify side panel that capture started
+          chrome.runtime.sendMessage({ type: "CAPTURE_STARTED" }).catch(() => {});
 
           sendResponse({ success: true });
         });
@@ -219,8 +270,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "STOP_CAPTURE") {
+    // Stop offscreen capture
+    chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => {});
+
     isCapturing = false;
     disconnectWebSocket();
+
+    // Close offscreen document
+    closeOffscreenDocument();
 
     // Remove caption overlay from tab
     removeCaptionFromTab();
@@ -231,8 +288,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
+  // Handle messages from offscreen document
+  if (msg.type === "OFFSCREEN_CAPTURE_STARTED") {
+    console.log("Offscreen capture started successfully");
+    return false;
+  }
+
+  if (msg.type === "OFFSCREEN_CAPTURE_STOPPED") {
+    console.log("Offscreen capture stopped");
+    return false;
+  }
+
+  if (msg.type === "OFFSCREEN_CAPTURE_ERROR") {
+    console.error("Offscreen capture error:", msg.error);
+    isCapturing = false;
+    chrome.runtime.sendMessage({
+      type: "CAPTURE_ERROR",
+      error: msg.error,
+    }).catch(() => {});
+    return false;
+  }
+
   if (msg.type === "GET_CAPTURE_STATE") {
     sendResponse({ isCapturing });
+    return false;
+  }
+
+  if (msg.type === "SET_CAPTION_SETTING") {
+    showOriginalInCaption = msg.showOriginal;
+    console.log("Caption setting updated: showOriginal =", showOriginalInCaption);
     return false;
   }
 

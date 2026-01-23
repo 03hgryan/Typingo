@@ -24,6 +24,7 @@ export default defineConfig({
       input: {
         main: "index.html",
         sidepanel: "sidepanel.html",
+        offscreen: "offscreen.html",
         content: "src/content.ts",
         background: "src/background.ts",
       },

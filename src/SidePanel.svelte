@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { FinalizedSegment, LiveSegment } from "./types/transcript";
-  import type { AudioChunk } from "./audio/types";
 
   let isCapturing = $state(false);
 
@@ -23,10 +22,18 @@
   let logs = $state<string[]>([]);
   let showLogs = $state(false); // Collapsible logs
 
-  // Audio capture state
-  let audioContext: AudioContext | null = null;
-  let workletNode: AudioWorkletNode | null = null;
-  let mediaStream: MediaStream | null = null;
+  // Settings
+  let showOriginalInCaption = $state(true); // Show original text in video captions
+
+  function toggleShowOriginal() {
+    showOriginalInCaption = !showOriginalInCaption;
+    // Save to storage and notify background
+    chrome.storage.local.set({ showOriginalInCaption });
+    chrome.runtime.sendMessage({
+      type: "SET_CAPTION_SETTING",
+      showOriginal: showOriginalInCaption,
+    });
+  }
 
   function addLog(message: string) {
     const timestamp = new Date().toLocaleTimeString();
@@ -43,76 +50,6 @@
     }
   }
 
-  async function startAudioCapture(streamId: string) {
-    try {
-      addLog("Starting audio capture with stream ID...");
-
-      // Use the stream ID to get the media stream
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          // @ts-expect-error - Chrome-specific constraint
-          mandatory: {
-            chromeMediaSource: "tab",
-            chromeMediaSourceId: streamId,
-          },
-        },
-        video: false,
-      });
-
-      audioContext = new AudioContext({ sampleRate: 48000 });
-
-      // Load audioWorklet from public folder
-      await audioContext.audioWorklet.addModule(chrome.runtime.getURL("public/audioWorklet.js"));
-
-      const source = audioContext.createMediaStreamSource(mediaStream);
-
-      workletNode = new AudioWorkletNode(audioContext, "audio-worklet");
-
-      workletNode.port.onmessage = (e) => {
-        const chunk = e.data as AudioChunk;
-        // Convert Int16Array to regular array for Chrome messaging
-        const chunkData = {
-          pcm: Array.from(chunk.pcm),
-          chunk_index: chunk.chunk_index,
-          duration_ms: chunk.duration_ms,
-        };
-
-        // Send audio chunks to background
-        chrome.runtime.sendMessage({
-          type: "AUDIO_CHUNK",
-          chunk: chunkData,
-        });
-      };
-
-      // Connect to worklet for processing
-      source.connect(workletNode);
-
-      // ALSO connect to speakers so audio isn't muted
-      source.connect(audioContext.destination);
-
-      addLog("Audio capture started successfully!");
-    } catch (error) {
-      addLog("Failed to start audio capture: " + error);
-      console.error("Audio capture error:", error);
-    }
-  }
-
-  function stopAudioCapture() {
-    if (workletNode) {
-      workletNode.disconnect();
-      workletNode.port.onmessage = null;
-      workletNode = null;
-    }
-
-    mediaStream?.getTracks().forEach((t) => t.stop());
-    mediaStream = null;
-
-    audioContext?.close();
-    audioContext = null;
-
-    addLog("Audio capture stopped");
-  }
-
   async function toggleCapture() {
     addLog("Button clicked! isCapturing: " + isCapturing);
 
@@ -121,11 +58,9 @@
       try {
         addLog("Requesting capture start...");
 
-        // Send message to background to start capture
         chrome.runtime.sendMessage({ type: "START_CAPTURE" }, (response) => {
           if (response?.success) {
-            // The actual capture will start when we receive START_CAPTURE_WITH_STREAM_ID
-            addLog("Capture request sent, waiting for stream ID...");
+            addLog("Capture started (running in background)");
           } else {
             addLog("Failed to start: " + (response?.error || "Unknown error"));
           }
@@ -136,7 +71,6 @@
     } else {
       // STOP: Request background to stop capture
       addLog("Stopping...");
-      stopAudioCapture();
 
       chrome.runtime.sendMessage({ type: "STOP_CAPTURE" }, (response) => {
         if (response?.success) {
@@ -250,20 +184,17 @@
       // Handle capture state updates from background
       if (message.type === "CAPTURE_STARTED") {
         isCapturing = true;
-        addLog("Capture started");
+        addLog("Capture started (running in background)");
       }
 
       if (message.type === "CAPTURE_STOPPED") {
         isCapturing = false;
-        stopAudioCapture();
         addLog("Capture stopped");
       }
 
-      // Handle stream ID from background to start audio capture
-      if (message.type === "START_CAPTURE_WITH_STREAM_ID") {
-        addLog("Received stream ID, starting capture...");
-        startAudioCapture(message.streamId);
-        isCapturing = true;
+      if (message.type === "CAPTURE_ERROR") {
+        isCapturing = false;
+        addLog("Capture error: " + message.error);
       }
     });
 
@@ -273,6 +204,18 @@
         isCapturing = true;
         addLog("Reconnected to active capture session");
       }
+    });
+
+    // Load settings from storage
+    chrome.storage.local.get(["showOriginalInCaption"], (result) => {
+      if (typeof result.showOriginalInCaption === "boolean") {
+        showOriginalInCaption = result.showOriginalInCaption;
+      }
+      // Sync setting with background
+      chrome.runtime.sendMessage({
+        type: "SET_CAPTION_SETTING",
+        showOriginal: showOriginalInCaption,
+      });
     });
   });
 </script>
@@ -285,6 +228,18 @@
   <button class="capture-btn" class:active={isCapturing} onclick={toggleCapture}>
     {isCapturing ? "Stop Capture" : "Start Capture"}
   </button>
+
+  <!-- Settings -->
+  <div class="settings-section">
+    <label class="toggle-setting">
+      <input
+        type="checkbox"
+        checked={showOriginalInCaption}
+        onchange={toggleShowOriginal}
+      />
+      <span class="toggle-label">Show original text in captions</span>
+    </label>
+  </div>
 
   <!-- Translation Section -->
   <div class="section">
@@ -386,6 +341,33 @@
     50% {
       opacity: 0.8;
     }
+  }
+
+  /* Settings styles */
+  .settings-section {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+  }
+
+  .toggle-setting {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #495057;
+  }
+
+  .toggle-setting input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+
+  .toggle-label {
+    user-select: none;
   }
 
   /* Section styles */

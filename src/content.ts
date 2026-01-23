@@ -75,6 +75,9 @@ function showCaption(source: string, translated: string, isStreaming: boolean = 
     captionSource.textContent = source;
     captionText.textContent = translated;
 
+    // Hide source element if empty
+    captionSource.style.display = source ? "block" : "none";
+
     // Style differently when streaming
     if (isStreaming) {
       captionText.style.color = "#ffcc00";
