@@ -4,13 +4,15 @@
   "version": "1.0",
   "description": "Automatic Speech Translation.",
   "action": {
-    "default_popup": "index.html",
     "default_icon": "public/vite.svg"
   },
-  "permissions": ["activeTab", "storage", "scripting", "tabs", "debugger", "tabCapture"],
+  "permissions": ["activeTab", "storage", "scripting", "tabs", "debugger", "tabCapture", "sidePanel"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "host_permissions": ["<all_urls>"],
   "content_scripts": [

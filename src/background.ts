@@ -5,6 +5,7 @@ console.log("Background script is running");
 
 let streamer: AudioStreamer | null = null;
 let isConnected = false;
+let isCapturing = false;
 
 const WS_URL = "ws://localhost:8000/stt/elevenlabs";
 
@@ -19,7 +20,7 @@ async function connectWebSocket() {
     streamer = new AudioStreamer();
 
     await streamer.connect(WS_URL, (data) => {
-      // Forward segments to popup (distinguish between live and finalized)
+      // Forward messages to side panel
       console.log("📦 Received from backend:", data);
 
       if (data.type === "segments_update") {
@@ -30,7 +31,7 @@ async function connectWebSocket() {
             payload: data,
           })
           .catch((err) => {
-            console.log("Popup not available:", err.message);
+            console.log("Side panel not available:", err.message);
           });
       } else if (data.type === "segments_finalized") {
         // Finalized segment (immutable)
@@ -40,7 +41,7 @@ async function connectWebSocket() {
             payload: data,
           })
           .catch((err) => {
-            console.log("Popup not available:", err.message);
+            console.log("Side panel not available:", err.message);
           });
       } else if (data.type === "transcript_final") {
         // Final transcript (on stream end)
@@ -50,7 +51,37 @@ async function connectWebSocket() {
             payload: data,
           })
           .catch((err) => {
-            console.log("Popup not available:", err.message);
+            console.log("Side panel not available:", err.message);
+          });
+      } else if (data.type === "translation_delta") {
+        // Streaming translation chunk
+        chrome.runtime
+          .sendMessage({
+            type: "TRANSLATION_DELTA",
+            payload: data.data,
+          })
+          .catch((err) => {
+            console.log("Side panel not available:", err.message);
+          });
+      } else if (data.type === "translation_complete") {
+        // Final translation
+        chrome.runtime
+          .sendMessage({
+            type: "TRANSLATION_COMPLETE",
+            payload: data.data,
+          })
+          .catch((err) => {
+            console.log("Side panel not available:", err.message);
+          });
+      } else if (data.type === "translation_error") {
+        // Translation error
+        chrome.runtime
+          .sendMessage({
+            type: "TRANSLATION_ERROR",
+            payload: data.data,
+          })
+          .catch((err) => {
+            console.log("Side panel not available:", err.message);
           });
       }
     });
@@ -80,13 +111,15 @@ function disconnectWebSocket() {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "CONNECT_WS") {
     connectWebSocket();
+    return false;
   }
 
   if (msg.type === "DISCONNECT_WS") {
     disconnectWebSocket();
+    return false;
   }
 
   if (msg.type === "AUDIO_CHUNK") {
@@ -102,9 +135,73 @@ chrome.runtime.onMessage.addListener((msg) => {
     } else {
       console.warn("⚠️ Received audio chunk but WebSocket not connected");
     }
+    return false;
   }
+
+  if (msg.type === "START_CAPTURE") {
+    // Get the active tab and start capture
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      const tab = tabs[0];
+      if (!tab?.id) {
+        sendResponse({ success: false, error: "No active tab" });
+        return;
+      }
+
+      try {
+        // Connect WebSocket first
+        await connectWebSocket();
+
+        // Get media stream ID for tab capture
+        chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (streamId) => {
+          if (chrome.runtime.lastError) {
+            console.error("Tab capture error:", chrome.runtime.lastError);
+            sendResponse({ success: false, error: chrome.runtime.lastError.message });
+            return;
+          }
+
+          isCapturing = true;
+
+          // Send stream ID to side panel to start audio capture
+          chrome.runtime.sendMessage({
+            type: "START_CAPTURE_WITH_STREAM_ID",
+            streamId,
+          }).catch(() => {});
+
+          sendResponse({ success: true });
+        });
+      } catch (error) {
+        console.error("Start capture error:", error);
+        sendResponse({ success: false, error: String(error) });
+      }
+    });
+
+    return true; // Keep channel open for async response
+  }
+
+  if (msg.type === "STOP_CAPTURE") {
+    isCapturing = false;
+    disconnectWebSocket();
+
+    chrome.runtime.sendMessage({ type: "CAPTURE_STOPPED" }).catch(() => {});
+    sendResponse({ success: true });
+    return false;
+  }
+
+  if (msg.type === "GET_CAPTURE_STATE") {
+    sendResponse({ isCapturing });
+    return false;
+  }
+
+  return false;
 });
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("✅ Extension installed");
+});
+
+// Open side panel when extension icon is clicked
+chrome.action.onClicked.addListener((tab) => {
+  if (tab.id) {
+    chrome.sidePanel.open({ tabId: tab.id });
+  }
 });
