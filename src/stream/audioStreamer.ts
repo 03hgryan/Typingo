@@ -39,17 +39,23 @@ export class AudioStreamer {
   send(chunk: any) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    // Send metadata first (for sequencing)
+    // Convert PCM buffer to base64
+    const uint8Array = new Uint8Array(chunk.pcm.buffer);
+    let binary = "";
+    for (let i = 0; i < uint8Array.length; i++) {
+      binary += String.fromCharCode(uint8Array[i]);
+    }
+    const audio_base_64 = btoa(binary);
+
+    // Send single JSON message with base64-encoded audio
     this.ws.send(
       JSON.stringify({
         type: "audio_chunk",
         chunk_index: chunk.chunk_index,
         duration_ms: chunk.duration_ms,
+        audio_base_64,
       })
     );
-
-    // Then send binary PCM data
-    this.ws.send(chunk.pcm.buffer);
   }
 
   disconnect() {
