@@ -24,8 +24,6 @@
   }
 
   async function toggleCapture() {
-    addLog("🔘 Button clicked! isCapturing: " + isCapturing);
-
     if (!isCapturing) {
       // START: Capture tab audio
       try {
