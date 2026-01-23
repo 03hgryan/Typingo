@@ -6,6 +6,36 @@ console.log("Background script is running");
 let streamer: AudioStreamer | null = null;
 let isConnected = false;
 let isCapturing = false;
+let activeTabId: number | null = null;
+
+// Helper to send caption to content script
+function sendCaptionToTab(source: string, translated: string, isStreaming: boolean) {
+  if (activeTabId) {
+    chrome.tabs.sendMessage(activeTabId, {
+      type: "SHOW_CAPTION",
+      source,
+      translated,
+      isStreaming,
+    }).catch(() => {});
+  }
+}
+
+function hideCaptionOnTab(delay: number = 3000) {
+  if (activeTabId) {
+    chrome.tabs.sendMessage(activeTabId, {
+      type: "HIDE_CAPTION",
+      delay,
+    }).catch(() => {});
+  }
+}
+
+function removeCaptionFromTab() {
+  if (activeTabId) {
+    chrome.tabs.sendMessage(activeTabId, {
+      type: "REMOVE_CAPTION",
+    }).catch(() => {});
+  }
+}
 
 const WS_URL = "ws://localhost:8000/stt/elevenlabs";
 
@@ -63,6 +93,9 @@ async function connectWebSocket() {
           .catch((err) => {
             console.log("Side panel not available:", err.message);
           });
+
+        // Send caption to content script
+        sendCaptionToTab(data.data.source || "", data.data.translated || "", true);
       } else if (data.type === "translation_complete") {
         // Final translation
         chrome.runtime
@@ -73,6 +106,10 @@ async function connectWebSocket() {
           .catch((err) => {
             console.log("Side panel not available:", err.message);
           });
+
+        // Send final caption and schedule hide
+        sendCaptionToTab(data.data.source || "", data.data.translated || "", false);
+        hideCaptionOnTab(5000); // Hide after 5 seconds
       } else if (data.type === "translation_error") {
         // Translation error
         chrome.runtime
@@ -147,6 +184,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
+      // Store active tab ID for caption injection
+      activeTabId = tab.id;
+
       try {
         // Connect WebSocket first
         await connectWebSocket();
@@ -181,6 +221,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "STOP_CAPTURE") {
     isCapturing = false;
     disconnectWebSocket();
+
+    // Remove caption overlay from tab
+    removeCaptionFromTab();
+    activeTabId = null;
 
     chrome.runtime.sendMessage({ type: "CAPTURE_STOPPED" }).catch(() => {});
     sendResponse({ success: true });
