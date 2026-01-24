@@ -1,7 +1,8 @@
 <!-- +page.svelte -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { AudioCapture } from "../../audio/audioCapture";
+  import { AudioCapture } from "../../lib/audioCapture";
+  import { getChunkDuration } from "../.././lib/settings";
   import type { FinalizedSegment, LiveSegment, WordInfo } from "../../types/transcript";
 
   let isCapturing = $state(false);
@@ -28,6 +29,8 @@
       // START: Capture tab audio
       try {
         addLog("🎤 Creating AudioCapture...");
+        const chunkDuration = await getChunkDuration();
+        addLog(`⏱️ Chunk duration: ${chunkDuration} sec`);
 
         capture = new AudioCapture((chunk) => {
           // Convert Int16Array to regular array for Chrome messaging
@@ -48,7 +51,7 @@
         chrome.runtime.sendMessage({ type: "CONNECT_WS" });
 
         addLog("🎙️ Starting tab audio capture...");
-        await capture.start();
+        await capture.start(chunkDuration);
 
         isCapturing = true;
         addLog("✅ Audio capture started!");
@@ -138,7 +141,7 @@
         // Debug logging
         console.log(
           "FINAL:",
-          finalizedSegments.map((s) => s.text)
+          finalizedSegments.map((s) => s.text),
         );
       }
 

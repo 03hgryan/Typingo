@@ -1,22 +1,32 @@
 // AudioWorklet for processing tab audio
 // Must be plain JavaScript (no imports/TypeScript)
 
-class AudioWorkletProcessorImpl extends AudioWorkletProcessor {
-  constructor() {
+class AudioProcessor extends AudioWorkletProcessor {
+  constructor(options) {
     super();
 
-    // ============ CONFIGURATION ============
-    // Change this value to adjust chunk duration:
-    // 0.1 = 100ms (more responsive, more messages)
-    // 0.32 = 320ms (less overhead, higher latency)
-    const CHUNK_DURATION_SEC = 0.32;
-    // =======================================
+    // Get initial chunk duration from options (default 320ms)
+    const chunkDurationSec = options.processorOptions?.chunkDurationSec || 0.32;
+    this.setChunkDuration(chunkDurationSec);
 
-    this.targetSamples = 16000 * CHUNK_DURATION_SEC;
-    this.chunkDurationMs = CHUNK_DURATION_SEC * 1000;
-    this.buffer = new Float32Array(this.targetSamples * 2);
+    this.buffer = new Float32Array(16000); // Max 1 second buffer
     this.writeIndex = 0;
     this.chunkIndex = 0;
+
+    // Listen for settings changes from main thread
+    this.port.onmessage = (event) => {
+      if (event.data.type === "SET_CHUNK_DURATION") {
+        this.setChunkDuration(event.data.chunkDurationSec);
+        console.log(`[AudioWorklet] Chunk duration updated: ${this.chunkDurationMs}ms`);
+      }
+    };
+
+    console.log(`[AudioWorklet] Initialized: ${this.chunkDurationMs}ms`);
+  }
+
+  setChunkDuration(seconds) {
+    this.targetSamples = Math.floor(16000 * seconds);
+    this.chunkDurationMs = seconds * 1000;
   }
 
   process(inputs, outputs, parameters) {
@@ -25,7 +35,7 @@ class AudioWorkletProcessorImpl extends AudioWorkletProcessor {
     }
 
     const left = inputs[0][0];
-    const right = inputs[0][1]; // May be undefined if mono
+    const right = inputs[0][1];
 
     // Downsample 48kHz → 16kHz (average every 3 samples)
     for (let i = 0; i < left.length - 2; i += 3) {
@@ -45,32 +55,32 @@ class AudioWorkletProcessorImpl extends AudioWorkletProcessor {
       this.buffer[this.writeIndex++] = sample;
 
       if (this.writeIndex >= this.targetSamples) {
-        const pcm16 = this.floatToPCM16(this.buffer.subarray(0, this.targetSamples));
-
-        const chunk = {
-          pcm: pcm16,
-          chunk_index: this.chunkIndex,
-          duration_ms: this.chunkDurationMs,
-        };
-
-        this.port.postMessage(chunk, [pcm16.buffer]);
-
-        this.chunkIndex++;
-        this.writeIndex = 0;
+        this.sendChunk();
       }
     }
 
     return true;
   }
 
-  floatToPCM16(float32) {
-    const out = new Int16Array(float32.length);
-    for (let i = 0; i < float32.length; i++) {
-      const clamped = Math.max(-1, Math.min(1, float32[i]));
-      out[i] = Math.round(clamped * 0x7fff);
+  sendChunk() {
+    // Convert Float32 [-1, 1] to Int16 [-32768, 32767]
+    const pcm = new Int16Array(this.writeIndex);
+    for (let i = 0; i < this.writeIndex; i++) {
+      const clamped = Math.max(-1, Math.min(1, this.buffer[i]));
+      pcm[i] = Math.round(clamped * 0x7fff);
     }
-    return out;
+
+    this.port.postMessage(
+      {
+        pcm: pcm,
+        chunk_index: this.chunkIndex++,
+        duration_ms: this.chunkDurationMs,
+      },
+      [pcm.buffer],
+    );
+
+    this.writeIndex = 0;
   }
 }
 
-registerProcessor("audio-worklet", AudioWorkletProcessorImpl);
+registerProcessor("audio-worklet", AudioProcessor);

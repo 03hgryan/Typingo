@@ -1,5 +1,5 @@
 // background.ts
-import { AudioStreamer } from "./stream/audioStreamer";
+import { AudioStreamer } from "./lib/audioStreamer";
 
 console.log("Background script is running");
 
@@ -56,29 +56,35 @@ async function closeOffscreenDocument() {
 // Helper to send caption to content script
 function sendCaptionToTab(source: string, translated: string, isStreaming: boolean) {
   if (activeTabId) {
-    chrome.tabs.sendMessage(activeTabId, {
-      type: "SHOW_CAPTION",
-      source: showOriginalInCaption ? source : "",
-      translated,
-      isStreaming,
-    }).catch(() => {});
+    chrome.tabs
+      .sendMessage(activeTabId, {
+        type: "SHOW_CAPTION",
+        source: showOriginalInCaption ? source : "",
+        translated,
+        isStreaming,
+      })
+      .catch(() => {});
   }
 }
 
 function hideCaptionOnTab(delay: number = 3000) {
   if (activeTabId) {
-    chrome.tabs.sendMessage(activeTabId, {
-      type: "HIDE_CAPTION",
-      delay,
-    }).catch(() => {});
+    chrome.tabs
+      .sendMessage(activeTabId, {
+        type: "HIDE_CAPTION",
+        delay,
+      })
+      .catch(() => {});
   }
 }
 
 function removeCaptionFromTab() {
   if (activeTabId) {
-    chrome.tabs.sendMessage(activeTabId, {
-      type: "REMOVE_CAPTION",
-    }).catch(() => {});
+    chrome.tabs
+      .sendMessage(activeTabId, {
+        type: "REMOVE_CAPTION",
+      })
+      .catch(() => {});
   }
 }
 
@@ -188,10 +194,12 @@ async function connectWebSocket() {
     isConnected = false;
 
     // Notify side panel about connection error
-    chrome.runtime.sendMessage({
-      type: "WS_ERROR",
-      error: String(error),
-    }).catch(() => {});
+    chrome.runtime
+      .sendMessage({
+        type: "WS_ERROR",
+        error: String(error),
+      })
+      .catch(() => {});
 
     throw error; // Re-throw so caller can handle
   }
@@ -268,10 +276,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           isCapturing = true;
 
           // Send stream ID to offscreen document to start audio capture
-          chrome.runtime.sendMessage({
-            type: "START_OFFSCREEN_CAPTURE",
-            streamId,
-          }).catch(() => {});
+          chrome.runtime
+            .sendMessage({
+              type: "START_OFFSCREEN_CAPTURE",
+              streamId,
+            })
+            .catch(() => {});
 
           // Notify side panel that capture started
           chrome.runtime.sendMessage({ type: "CAPTURE_STARTED" }).catch(() => {});
@@ -320,10 +330,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "OFFSCREEN_CAPTURE_ERROR") {
     console.error("Offscreen capture error:", msg.error);
     isCapturing = false;
-    chrome.runtime.sendMessage({
-      type: "CAPTURE_ERROR",
-      error: msg.error,
-    }).catch(() => {});
+    chrome.runtime
+      .sendMessage({
+        type: "CAPTURE_ERROR",
+        error: msg.error,
+      })
+      .catch(() => {});
     return false;
   }
 
