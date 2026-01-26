@@ -3,14 +3,33 @@ console.log("Content script loaded");
 
 // Caption overlay state
 let captionContainer: HTMLDivElement | null = null;
-let captionText: HTMLDivElement | null = null;
-let captionSource: HTMLDivElement | null = null;
+let confirmedSpan: HTMLSpanElement | null = null;
+let liveSpan: HTMLSpanElement | null = null;
 let hideTimeout: number | null = null;
+
+// Inject styles
+function injectStyles() {
+  if (document.getElementById("ast-caption-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "ast-caption-styles";
+  style.textContent = `
+    .ast-confirmed {
+      color: #4ade80;
+    }
+
+    .ast-live {
+      color: #fff;
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 function createCaptionOverlay() {
   if (captionContainer) return;
 
-  // Create container
+  injectStyles();
+
   captionContainer = document.createElement("div");
   captionContainer.id = "ast-caption-container";
   captionContainer.style.cssText = `
@@ -20,78 +39,59 @@ function createCaptionOverlay() {
     transform: translateX(-50%);
     z-index: 2147483647;
     pointer-events: none;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
     max-width: 80%;
     opacity: 0;
     transition: opacity 0.2s ease;
   `;
 
-  // Source text (English - smaller, above)
-  captionSource = document.createElement("div");
-  captionSource.id = "ast-caption-source";
-  captionSource.style.cssText = `
-    background: rgba(0, 0, 0, 0.6);
-    color: #aaa;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 14px;
-    line-height: 1.4;
-    text-align: center;
-    max-width: 100%;
-  `;
-
-  // Translated text (Korean - larger, below)
-  captionText = document.createElement("div");
-  captionText.id = "ast-caption-text";
-  captionText.style.cssText = `
+  const captionBox = document.createElement("div");
+  captionBox.id = "ast-caption-box";
+  captionBox.style.cssText = `
     background: rgba(0, 0, 0, 0.85);
     color: #fff;
-    padding: 8px 16px;
-    border-radius: 6px;
+    padding: 10px 20px;
+    border-radius: 8px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 18px;
     font-weight: 500;
-    line-height: 1.5;
+    line-height: 1.6;
     text-align: center;
-    max-width: 100%;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    min-width: 100px;
+    min-height: 28px;
   `;
 
-  captionContainer.appendChild(captionSource);
-  captionContainer.appendChild(captionText);
+  confirmedSpan = document.createElement("span");
+  confirmedSpan.className = "ast-confirmed";
+
+  liveSpan = document.createElement("span");
+  liveSpan.className = "ast-live";
+
+  captionBox.appendChild(confirmedSpan);
+  captionBox.appendChild(liveSpan);
+  captionContainer.appendChild(captionBox);
   document.body.appendChild(captionContainer);
 }
 
-function showCaption(source: string, translated: string, isStreaming: boolean = false) {
+function showCaption(confirmed: string, live: string) {
   if (!captionContainer) {
     createCaptionOverlay();
   }
 
-  if (captionSource && captionText && captionContainer) {
-    captionSource.textContent = source;
-    captionText.textContent = translated;
+  if (!confirmedSpan || !liveSpan || !captionContainer) return;
 
-    // Hide source element if empty
-    captionSource.style.display = source ? "block" : "none";
+  // Update text
+  confirmedSpan.textContent = confirmed;
+  liveSpan.textContent = live ? (confirmed ? " " + live : live) : "";
 
-    // Style differently when streaming
-    if (isStreaming) {
-      captionText.style.color = "#ffcc00";
-    } else {
-      captionText.style.color = "#fff";
-    }
+  // Show/hide based on content
+  const hasContent = confirmed || live;
+  captionContainer.style.opacity = hasContent ? "1" : "0";
 
-    captionContainer.style.opacity = "1";
-
-    // Clear any existing hide timeout
-    if (hideTimeout) {
-      clearTimeout(hideTimeout);
-      hideTimeout = null;
-    }
+  // Clear any pending hide
+  if (hideTimeout) {
+    clearTimeout(hideTimeout);
+    hideTimeout = null;
   }
 }
 
@@ -111,29 +111,31 @@ function removeCaptionOverlay() {
   if (captionContainer) {
     captionContainer.remove();
     captionContainer = null;
-    captionText = null;
-    captionSource = null;
+    confirmedSpan = null;
+    liveSpan = null;
   }
   if (hideTimeout) {
     clearTimeout(hideTimeout);
     hideTimeout = null;
   }
+
+  // Remove injected styles
+  const styles = document.getElementById("ast-caption-styles");
+  if (styles) styles.remove();
 }
 
 // Listen for messages from background
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "GET_PAGE_INFO") {
-    const pageInfo = {
+    sendResponse({
       url: window.location.href,
       title: document.title,
-    };
-    sendResponse(pageInfo);
+    });
     return true;
   }
 
-  // Caption messages
   if (message.type === "SHOW_CAPTION") {
-    showCaption(message.source, message.translated, message.isStreaming);
+    showCaption(message.confirmed || "", message.pending || message.live || "");
     return false;
   }
 

@@ -24,4 +24,15 @@ export interface StorageSettings {
   chunkDurationSec?: number;
 }
 
+// WebSocket message format
+export interface WebSocketMessage {
+  type: "translation" | "partial_transcript" | "committed_transcript" | "error";
+  confirmed?: string;
+  live?: string;
+  data?: {
+    text?: string;
+  };
+  message?: string;
+}
+
 export const DEFAULT_CHUNK_DURATION_SEC = 0.32;

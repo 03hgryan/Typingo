@@ -1,7 +1,7 @@
 // audioStreamer.ts - WebSocket client for audio streaming
-import type { AudioChunk } from "./types";
+import type { AudioChunk, WebSocketMessage } from "./types";
 
-type MessageHandler = (data: unknown) => void;
+type MessageHandler = (data: WebSocketMessage) => void;
 
 export class AudioStreamer {
   private ws?: WebSocket;
