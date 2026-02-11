@@ -88,14 +88,14 @@ async function connectWebSocket() {
     streamer = new AudioStreamer();
 
     await streamer.connect(WS_URL, (data) => {
-      if (data.type === "confirmed_translation") {
-        confirmedKorean = data.text || "";
+      if (data.type === "combined") {
+        confirmedKorean = data.full || "";
         partialKorean = "";
         chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedKorean }).catch(() => {});
         sendCaptionToTab(confirmedKorean, "");
       }
 
-      if (data.type === "partial_translation") {
+      if (data.type === "translation") {
         partialKorean = data.text || "";
         chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", text: partialKorean }).catch(() => {});
         sendCaptionToTab(confirmedKorean, partialKorean);
