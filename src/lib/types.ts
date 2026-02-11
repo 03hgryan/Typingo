@@ -11,6 +11,8 @@ export type MessageToBackground =
   | { type: "START_CAPTURE" }
   | { type: "STOP_CAPTURE" }
   | { type: "GET_CAPTURE_STATE" }
+  | { type: "GET_ASR_PROVIDER" }
+  | { type: "SET_ASR_PROVIDER"; provider: AsrProvider }
   | { type: "AUDIO_CHUNK"; chunk: { pcm: number[]; chunk_index: number; duration_ms: number } };
 
 export type MessageFromBackground =
@@ -61,9 +63,14 @@ export interface WSErrorMessage {
 
 export type WSMessage = WSCombinedMessage | WSTranslationMessage | WSPartialMessage | WSSessionMessage | WSErrorMessage;
 
+// ASR provider
+export type AsrProvider = "elevenlabs" | "speechmatics";
+export const DEFAULT_ASR_PROVIDER: AsrProvider = "elevenlabs";
+
 // Settings storage
 export interface StorageSettings {
   chunkDurationSec?: number;
+  asrProvider?: AsrProvider;
 }
 
 export const DEFAULT_CHUNK_DURATION_SEC = 0.32;

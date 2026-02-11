@@ -6,7 +6,7 @@
   "action": {
     "default_icon": "public/vite.svg"
   },
-  "permissions": ["activeTab", "scripting", "tabs", "tabCapture", "sidePanel", "offscreen"],
+  "permissions": ["activeTab", "scripting", "tabs", "tabCapture", "sidePanel", "offscreen", "storage"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"

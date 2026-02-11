@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { AsrProvider } from "./lib/types";
 
   let isCapturing = $state(false);
   let errorMessage = $state<string | null>(null);
+  let selectedProvider = $state<AsrProvider>("elevenlabs");
 
   let transcript = $state("");
   let confirmedTranslation = $state("");
@@ -16,6 +18,15 @@
     transcript = "";
     confirmedTranslation = "";
     partialTranslation = "";
+  }
+
+  function onProviderChange(e: Event) {
+    const provider = (e.target as HTMLSelectElement).value as AsrProvider;
+    chrome.runtime.sendMessage({ type: "SET_ASR_PROVIDER", provider }, (response) => {
+      if (response?.success) {
+        selectedProvider = provider;
+      }
+    });
   }
 
   async function toggleCapture() {
@@ -81,6 +92,12 @@
         isCapturing = true;
       }
     });
+
+    chrome.runtime.sendMessage({ type: "GET_ASR_PROVIDER" }, (response) => {
+      if (response?.provider) {
+        selectedProvider = response.provider;
+      }
+    });
   });
 </script>
 
@@ -91,6 +108,14 @@
       {isCapturing ? "● Recording" : "○ Idle"}
     </span>
   </header>
+
+  <div class="provider-select">
+    <label for="provider">Provider</label>
+    <select id="provider" value={selectedProvider} onchange={onProviderChange} disabled={isCapturing}>
+      <option value="elevenlabs">ElevenLabs</option>
+      <option value="speechmatics">Speechmatics</option>
+    </select>
+  </div>
 
   <button class="capture-btn" class:active={isCapturing} onclick={toggleCapture}>
     {isCapturing ? "⏹ Stop" : "▶ Start"}
@@ -175,6 +200,41 @@
     50% {
       opacity: 0.7;
     }
+  }
+
+  .provider-select {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .provider-select label {
+    font-size: 0.75rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .provider-select select {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    background: #1a1a1a;
+    color: #fff;
+    border: 1px solid #333;
+    border-radius: 8px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23888' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+
+  .provider-select select:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .capture-btn {
