@@ -5,8 +5,8 @@
   let errorMessage = $state<string | null>(null);
 
   let transcript = $state("");
-  let combinedText = $state("");
-  let liveTranslation = $state("");
+  let confirmedTranslation = $state("");
+  let partialTranslation = $state("");
 
   function clearError() {
     errorMessage = null;
@@ -14,8 +14,8 @@
 
   function resetState() {
     transcript = "";
-    combinedText = "";
-    liveTranslation = "";
+    confirmedTranslation = "";
+    partialTranslation = "";
   }
 
   async function toggleCapture() {
@@ -43,12 +43,13 @@
         transcript = message.text || "";
       }
 
-      if (message.type === "COMBINED") {
-        combinedText = message.text || "";
+      if (message.type === "CONFIRMED_TRANSLATION") {
+        confirmedTranslation = message.text || "";
+        partialTranslation = "";
       }
 
-      if (message.type === "TRANSLATION") {
-        liveTranslation = message.text || "";
+      if (message.type === "PARTIAL_TRANSLATION") {
+        partialTranslation = message.text || "";
       }
 
       if (message.type === "CAPTURE_STARTED") {
@@ -102,22 +103,22 @@
     </div>
   {/if}
 
-  <!-- Combined Translation -->
+  <!-- Translation -->
   <div class="section">
     <div class="label">Translation</div>
     <div class="translation-box">
-      {#if !combinedText && !liveTranslation}
+      {#if !confirmedTranslation && !partialTranslation}
         <span class="placeholder">Waiting for speech...</span>
       {:else}
-        <span class="combined">{combinedText}</span>
-        {#if liveTranslation}
-          <div class="live-preview">{liveTranslation}</div>
+        <span class="confirmed">{confirmedTranslation}</span>
+        {#if partialTranslation}
+          <span class="partial"> {partialTranslation}</span>
         {/if}
       {/if}
     </div>
   </div>
 
-  <!-- Raw Transcript (collapsible) -->
+  <!-- Raw Transcript -->
   <details class="transcript-details">
     <summary>Raw transcript</summary>
     <p>{transcript || "—"}</p>
@@ -246,17 +247,11 @@
     color: #333;
     font-style: italic;
   }
-
-  .combined {
+  .confirmed {
     color: #e2e8f0;
   }
-
-  .live-preview {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #222;
+  .partial {
     color: #64748b;
-    font-size: 0.9rem;
   }
 
   .transcript-details {

@@ -2,17 +2,19 @@
 console.log("Content script loaded");
 
 let captionContainer: HTMLDivElement | null = null;
-let captionOuter: HTMLDivElement | null = null; // overflow:hidden, max 2 lines
-let captionInner: HTMLDivElement | null = null; // grows with all text
+let captionOuter: HTMLDivElement | null = null;
+let confirmedSpan: HTMLSpanElement | null = null;
+let partialSpan: HTMLSpanElement | null = null;
 
 let hideTimeout: number | null = null;
-let currentDisplayText = "";
+let currentConfirmedDisplay = "";
 let typewriterTimer: number | null = null;
 let typewriterQueue = "";
 let typewriterIndex = 0;
+let targetConfirmed = "";
 
 const CHAR_DELAY = 25;
-const LINE_HEIGHT = 30; // px per line
+const LINE_HEIGHT = 30;
 const MAX_LINES = 2;
 const MAX_HEIGHT = LINE_HEIGHT * MAX_LINES;
 
@@ -35,7 +37,6 @@ function createCaptionOverlay() {
   `;
 
   captionOuter = document.createElement("div");
-  captionOuter.id = "ast-caption-outer";
   captionOuter.style.cssText = `
     background: rgba(0, 0, 0, 0.85);
     border-radius: 8px;
@@ -45,10 +46,8 @@ function createCaptionOverlay() {
     position: relative;
   `;
 
-  captionInner = document.createElement("div");
-  captionInner.id = "ast-caption-inner";
-  captionInner.style.cssText = `
-    color: #fff;
+  const inner = document.createElement("div");
+  inner.style.cssText = `
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 18px;
     font-weight: 500;
@@ -59,24 +58,28 @@ function createCaptionOverlay() {
     transition: transform 0.3s ease;
   `;
 
-  captionOuter.appendChild(captionInner);
+  confirmedSpan = document.createElement("span");
+  confirmedSpan.style.color = "#fff";
+
+  partialSpan = document.createElement("span");
+  partialSpan.style.color = "#999";
+
+  inner.appendChild(confirmedSpan);
+  inner.appendChild(partialSpan);
+  captionOuter.appendChild(inner);
   captionContainer.appendChild(captionOuter);
   document.body.appendChild(captionContainer);
 }
 
 function scrollToBottom() {
-  if (!captionInner || !captionOuter) return;
-
-  // How tall is the inner content?
-  const innerHeight = captionInner.scrollHeight;
-  const visibleHeight = MAX_HEIGHT;
-
-  if (innerHeight > visibleHeight) {
-    // Shift inner upward so the bottom is visible
-    const offset = -(innerHeight - visibleHeight);
-    captionInner.style.transform = `translateY(${offset}px)`;
+  if (!captionOuter) return;
+  const inner = captionOuter.firstElementChild as HTMLElement;
+  if (!inner) return;
+  const innerHeight = inner.scrollHeight;
+  if (innerHeight > MAX_HEIGHT) {
+    inner.style.transform = `translateY(${-(innerHeight - MAX_HEIGHT)}px)`;
   } else {
-    captionInner.style.transform = "translateY(0)";
+    inner.style.transform = "translateY(0)";
   }
 }
 
@@ -99,22 +102,20 @@ function stopTypewriter() {
 
 function startTypewriter(newChars: string) {
   stopTypewriter();
-  if (!newChars || !captionInner) return;
+  if (!newChars || !confirmedSpan) return;
 
   typewriterQueue = newChars;
   typewriterIndex = 0;
 
   typewriterTimer = window.setInterval(() => {
-    if (!captionInner || typewriterIndex >= typewriterQueue.length) {
+    if (!confirmedSpan || typewriterIndex >= typewriterQueue.length) {
       stopTypewriter();
       return;
     }
 
-    currentDisplayText += typewriterQueue[typewriterIndex];
-    captionInner.textContent = currentDisplayText;
+    currentConfirmedDisplay += typewriterQueue[typewriterIndex];
+    confirmedSpan.textContent = currentConfirmedDisplay;
     typewriterIndex++;
-
-    // Scroll as we type
     scrollToBottom();
 
     if (typewriterIndex >= typewriterQueue.length) {
@@ -123,56 +124,60 @@ function startTypewriter(newChars: string) {
   }, CHAR_DELAY);
 }
 
-function showCaption(text: string) {
+function showCaption(confirmed: string, partial: string) {
   if (!captionContainer) createCaptionOverlay();
-  if (!captionInner || !captionOuter || !captionContainer) return;
+  if (!confirmedSpan || !partialSpan || !captionContainer) return;
 
-  if (!text) {
+  if (!confirmed && !partial) {
     captionContainer.style.opacity = "0";
-    currentDisplayText = "";
+    currentConfirmedDisplay = "";
+    targetConfirmed = "";
     stopTypewriter();
     return;
   }
 
-  // No truncation — we show everything, the outer box clips to 2 lines
-  const newText = text;
-
-  // Compare against full target (including chars still being typed)
-  const fullCurrent = currentDisplayText + typewriterQueue.slice(typewriterIndex);
-
-  if (newText === fullCurrent) return;
-
-  stopTypewriter();
-
-  const divergePoint = findDivergence(fullCurrent, newText);
-  const stableText = newText.slice(0, divergePoint);
-  const newChars = newText.slice(divergePoint);
-
-  // Set stable prefix instantly
-  currentDisplayText = stableText;
-  captionInner.textContent = stableText;
   captionContainer.style.opacity = "1";
-
-  // Scroll to show latest
-  scrollToBottom();
 
   if (hideTimeout) {
     clearTimeout(hideTimeout);
     hideTimeout = null;
   }
 
-  if (newChars.length > 0) {
-    if (newChars.length > 50) {
-      // Too many chars — show most instantly, typewrite last 30
-      const instantPart = newChars.slice(0, newChars.length - 30);
-      currentDisplayText += instantPart;
-      captionInner.textContent = currentDisplayText;
-      scrollToBottom();
-      startTypewriter(newChars.slice(newChars.length - 30));
-    } else {
-      startTypewriter(newChars);
+  // --- Confirmed text: typewriter effect ---
+  if (confirmed !== targetConfirmed) {
+    targetConfirmed = confirmed;
+
+    // Include chars still being typed in comparison
+    const fullCurrent = currentConfirmedDisplay + typewriterQueue.slice(typewriterIndex);
+    stopTypewriter();
+
+    const divergePoint = findDivergence(fullCurrent, confirmed);
+    const stableText = confirmed.slice(0, divergePoint);
+    const newChars = confirmed.slice(divergePoint);
+
+    currentConfirmedDisplay = stableText;
+    confirmedSpan.textContent = stableText;
+
+    if (newChars.length > 0) {
+      if (newChars.length > 50) {
+        const instantPart = newChars.slice(0, newChars.length - 30);
+        currentConfirmedDisplay += instantPart;
+        confirmedSpan.textContent = currentConfirmedDisplay;
+        startTypewriter(newChars.slice(newChars.length - 30));
+      } else {
+        startTypewriter(newChars);
+      }
     }
   }
+
+  // --- Partial text: instant, no typewriter ---
+  if (partial) {
+    partialSpan.textContent = " " + partial;
+  } else {
+    partialSpan.textContent = "";
+  }
+
+  scrollToBottom();
 }
 
 function removeCaptionOverlay() {
@@ -180,14 +185,16 @@ function removeCaptionOverlay() {
     captionContainer.remove();
     captionContainer = null;
     captionOuter = null;
-    captionInner = null;
+    confirmedSpan = null;
+    partialSpan = null;
   }
   if (hideTimeout) {
     clearTimeout(hideTimeout);
     hideTimeout = null;
   }
   stopTypewriter();
-  currentDisplayText = "";
+  currentConfirmedDisplay = "";
+  targetConfirmed = "";
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -197,15 +204,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "SHOW_CAPTION") {
-    showCaption(message.text || "");
-    return false;
-  }
-
-  if (message.type === "HIDE_CAPTION") {
-    if (hideTimeout) clearTimeout(hideTimeout);
-    hideTimeout = window.setTimeout(() => {
-      if (captionContainer) captionContainer.style.opacity = "0";
-    }, message.delay || 3000);
+    showCaption(message.confirmed || "", message.partial || "");
     return false;
   }
 

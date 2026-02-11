@@ -10,7 +10,7 @@ let activeTabId: number | null = null;
 let hasOffscreenDocument = false;
 
 const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
-const WS_URL = "ws://localhost:8000/stt/elevenlabs";
+const WS_URL = "ws://localhost:8000/stt/speechmatics-test";
 
 // ============ Offscreen Document ============
 
@@ -49,12 +49,13 @@ async function closeOffscreenDocument() {
 
 // ============ Caption Helpers ============
 
-function sendCaptionToTab(text: string) {
+function sendCaptionToTab(confirmed: string, partial: string) {
   if (activeTabId) {
     chrome.tabs
       .sendMessage(activeTabId, {
         type: "SHOW_CAPTION",
-        text,
+        confirmed,
+        partial,
       })
       .catch(() => {});
   }
@@ -66,6 +67,11 @@ function removeCaptionFromTab() {
   }
 }
 
+// ============ State ============
+
+let confirmedKorean = "";
+let partialKorean = "";
+
 // ============ WebSocket ============
 
 async function connectWebSocket() {
@@ -74,50 +80,33 @@ async function connectWebSocket() {
     return;
   }
 
+  confirmedKorean = "";
+  partialKorean = "";
+
   try {
     console.log("🔌 Connecting to WebSocket...");
     streamer = new AudioStreamer();
 
     await streamer.connect(WS_URL, (data) => {
-      // Combined text (final display)
-      if (data.type === "combined") {
-        chrome.runtime
-          .sendMessage({
-            type: "COMBINED",
-            text: data.full || "",
-          })
-          .catch(() => {});
-
-        sendCaptionToTab(data.full || "");
+      if (data.type === "confirmed_translation") {
+        confirmedKorean = data.text || "";
+        partialKorean = "";
+        chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedKorean }).catch(() => {});
+        sendCaptionToTab(confirmedKorean, "");
       }
 
-      // Rolling window translation (can show as preview)
-      if (data.type === "translation") {
-        chrome.runtime
-          .sendMessage({
-            type: "TRANSLATION",
-            text: data.text || "",
-          })
-          .catch(() => {});
+      if (data.type === "partial_translation") {
+        partialKorean = data.text || "";
+        chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", text: partialKorean }).catch(() => {});
+        sendCaptionToTab(confirmedKorean, partialKorean);
       }
 
-      // Raw transcript
       if (data.type === "partial") {
-        chrome.runtime
-          .sendMessage({
-            type: "TRANSCRIPT",
-            text: data.text || "",
-          })
-          .catch(() => {});
+        chrome.runtime.sendMessage({ type: "TRANSCRIPT", text: data.text || "" }).catch(() => {});
       }
 
       if (data.type === "error") {
-        chrome.runtime
-          .sendMessage({
-            type: "ERROR",
-            message: data.message || "Server error",
-          })
-          .catch(() => {});
+        chrome.runtime.sendMessage({ type: "ERROR", message: data.message || "Server error" }).catch(() => {});
       }
     });
 
