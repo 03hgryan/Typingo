@@ -26,10 +26,7 @@ async function createOffscreenDocument() {
   try {
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_DOCUMENT_PATH,
-      reasons: [
-        chrome.offscreen.Reason.USER_MEDIA,
-        chrome.offscreen.Reason.AUDIO_PLAYBACK,
-      ],
+      reasons: [chrome.offscreen.Reason.USER_MEDIA, chrome.offscreen.Reason.AUDIO_PLAYBACK],
       justification: "Audio capture for speech-to-text translation",
     });
     hasOffscreenDocument = true;
@@ -72,9 +69,7 @@ function sendCaptionToTab(confirmed: string, partial: string) {
 
 function removeCaptionFromTab() {
   if (activeTabId) {
-    chrome.tabs
-      .sendMessage(activeTabId, { type: "REMOVE_CAPTION" })
-      .catch(() => {});
+    chrome.tabs.sendMessage(activeTabId, { type: "REMOVE_CAPTION" }).catch(() => {});
   }
 }
 
@@ -101,27 +96,21 @@ async function connectWebSocket() {
     streamer = new AudioStreamer();
 
     await streamer.connect(wsUrl, (data) => {
-      if (data.type === "combined") {
-        confirmedKorean = data.full || "";
+      if (data.type === "confirmed_translation") {
+        confirmedKorean = data.text || "";
         partialKorean = "";
-        chrome.runtime
-          .sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedKorean })
-          .catch(() => {});
+        chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedKorean }).catch(() => {});
         sendCaptionToTab(confirmedKorean, "");
       }
 
-      if (data.type === "translation") {
+      if (data.type === "partial_translation") {
         partialKorean = data.text || "";
-        chrome.runtime
-          .sendMessage({ type: "PARTIAL_TRANSLATION", text: partialKorean })
-          .catch(() => {});
+        chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", text: partialKorean }).catch(() => {});
         sendCaptionToTab(confirmedKorean, partialKorean);
       }
 
       if (data.type === "partial") {
-        chrome.runtime
-          .sendMessage({ type: "TRANSCRIPT", text: data.text || "" })
-          .catch(() => {});
+        chrome.runtime.sendMessage({ type: "TRANSCRIPT", text: data.text || "" }).catch(() => {});
       }
 
       if (data.type === "error") {
@@ -140,9 +129,7 @@ async function connectWebSocket() {
   } catch (error) {
     console.error("❌ Failed to connect:", error);
     isConnected = false;
-    chrome.runtime
-      .sendMessage({ type: "WS_ERROR", error: String(error) })
-      .catch(() => {});
+    chrome.runtime.sendMessage({ type: "WS_ERROR", error: String(error) }).catch(() => {});
     throw error;
   }
 }
@@ -176,30 +163,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         await connectWebSocket();
         await createOffscreenDocument();
 
-        chrome.tabCapture.getMediaStreamId(
-          { targetTabId: tab.id },
-          (streamId) => {
-            if (chrome.runtime.lastError) {
-              console.error("Tab capture error:", chrome.runtime.lastError);
-              sendResponse({
-                success: false,
-                error: chrome.runtime.lastError.message,
-              });
-              return;
-            }
+        chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (streamId) => {
+          if (chrome.runtime.lastError) {
+            console.error("Tab capture error:", chrome.runtime.lastError);
+            sendResponse({
+              success: false,
+              error: chrome.runtime.lastError.message,
+            });
+            return;
+          }
 
-            isCapturing = true;
+          isCapturing = true;
 
-            chrome.runtime
-              .sendMessage({ type: "START_OFFSCREEN_CAPTURE", streamId })
-              .catch(() => {});
-            chrome.runtime
-              .sendMessage({ type: "CAPTURE_STARTED" })
-              .catch(() => {});
+          chrome.runtime.sendMessage({ type: "START_OFFSCREEN_CAPTURE", streamId }).catch(() => {});
+          chrome.runtime.sendMessage({ type: "CAPTURE_STARTED" }).catch(() => {});
 
-            sendResponse({ success: true });
-          },
-        );
+          sendResponse({ success: true });
+        });
       } catch (error) {
         console.error("Start capture error:", error);
         sendResponse({ success: false, error: String(error) });
@@ -210,9 +190,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === "STOP_CAPTURE") {
-    chrome.runtime
-      .sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" })
-      .catch(() => {});
+    chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => {});
     isCapturing = false;
     disconnectWebSocket();
     closeOffscreenDocument();
@@ -248,9 +226,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "OFFSCREEN_CAPTURE_ERROR") {
     console.error("Offscreen capture error:", msg.error);
     isCapturing = false;
-    chrome.runtime
-      .sendMessage({ type: "CAPTURE_ERROR", error: msg.error })
-      .catch(() => {});
+    chrome.runtime.sendMessage({ type: "CAPTURE_ERROR", error: msg.error }).catch(() => {});
     return false;
   }
 
