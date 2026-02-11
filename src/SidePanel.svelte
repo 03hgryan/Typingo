@@ -4,12 +4,9 @@
   let isCapturing = $state(false);
   let errorMessage = $state<string | null>(null);
 
-  // Transcript (from ASR)
   let transcript = $state("");
-
-  // Translation (confirmed + live)
-  let confirmedText = $state("");
-  let liveText = $state("");
+  let combinedText = $state("");
+  let liveTranslation = $state("");
 
   function clearError() {
     errorMessage = null;
@@ -17,8 +14,8 @@
 
   function resetState() {
     transcript = "";
-    confirmedText = "";
-    liveText = "";
+    combinedText = "";
+    liveTranslation = "";
   }
 
   async function toggleCapture() {
@@ -42,18 +39,18 @@
 
   onMount(() => {
     chrome.runtime.onMessage.addListener((message) => {
-      // Transcript from ASR
       if (message.type === "TRANSCRIPT") {
         transcript = message.text || "";
       }
 
-      // Translation (confirmed + live)
-      if (message.type === "TRANSLATION") {
-        confirmedText = message.confirmed || "";
-        liveText = message.live || "";
+      if (message.type === "COMBINED") {
+        combinedText = message.text || "";
       }
 
-      // Capture state
+      if (message.type === "TRANSLATION") {
+        liveTranslation = message.text || "";
+      }
+
       if (message.type === "CAPTURE_STARTED") {
         isCapturing = true;
         errorMessage = null;
@@ -105,16 +102,17 @@
     </div>
   {/if}
 
-  <!-- Translation -->
+  <!-- Combined Translation -->
   <div class="section">
     <div class="label">Translation</div>
     <div class="translation-box">
-      {#if !confirmedText && !liveText}
+      {#if !combinedText && !liveTranslation}
         <span class="placeholder">Waiting for speech...</span>
       {:else}
-        <span class="confirmed">{confirmedText}</span>{#if confirmedText && liveText}&nbsp;{/if}<span class="live"
-          >{liveText}</span
-        >
+        <span class="combined">{combinedText}</span>
+        {#if liveTranslation}
+          <div class="live-preview">{liveTranslation}</div>
+        {/if}
       {/if}
     </div>
   </div>
@@ -249,12 +247,16 @@
     font-style: italic;
   }
 
-  .confirmed {
-    color: #4ade80;
+  .combined {
+    color: #e2e8f0;
   }
 
-  .live {
-    color: #fff;
+  .live-preview {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #222;
+    color: #64748b;
+    font-size: 0.9rem;
   }
 
   .transcript-details {

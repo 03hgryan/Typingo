@@ -49,14 +49,12 @@ async function closeOffscreenDocument() {
 
 // ============ Caption Helpers ============
 
-function sendCaptionToTab(confirmed: string, pending: string, remainder: string = "") {
+function sendCaptionToTab(text: string) {
   if (activeTabId) {
     chrome.tabs
       .sendMessage(activeTabId, {
         type: "SHOW_CAPTION",
-        confirmed,
-        pending,
-        remainder,
+        text,
       })
       .catch(() => {});
   }
@@ -81,30 +79,39 @@ async function connectWebSocket() {
     streamer = new AudioStreamer();
 
     await streamer.connect(WS_URL, (data) => {
-      console.log("📦 Received:", data.type);
+      // Combined text (final display)
+      if (data.type === "combined") {
+        chrome.runtime
+          .sendMessage({
+            type: "COMBINED",
+            text: data.full || "",
+          })
+          .catch(() => {});
 
-      // Handle translation (confirmed + live)
+        sendCaptionToTab(data.full || "");
+      }
+
+      // Rolling window translation (can show as preview)
       if (data.type === "translation") {
         chrome.runtime
           .sendMessage({
             type: "TRANSLATION",
-            confirmed: data.confirmed || "",
-            live: data.live || "",
+            text: data.text || "",
           })
           .catch(() => {});
+      }
 
-        // Update caption
-        sendCaptionToTab(data.confirmed || "", data.live || "", "");
-      } else if (data.type === "partial_transcript" || data.type === "committed_transcript") {
-        // Forward transcript for display
+      // Raw transcript
+      if (data.type === "partial") {
         chrome.runtime
           .sendMessage({
             type: "TRANSCRIPT",
-            text: data.data?.text || "",
-            isFinal: data.type === "committed_transcript",
+            text: data.text || "",
           })
           .catch(() => {});
-      } else if (data.type === "error") {
+      }
+
+      if (data.type === "error") {
         chrome.runtime
           .sendMessage({
             type: "ERROR",

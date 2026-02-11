@@ -8,31 +8,62 @@ export interface AudioChunk {
 
 // Message types for chrome.runtime communication
 export type MessageToBackground =
-  | { type: "CONNECT" }
-  | { type: "DISCONNECT" }
-  | { type: "GET_STATUS" }
+  | { type: "START_CAPTURE" }
+  | { type: "STOP_CAPTURE" }
+  | { type: "GET_CAPTURE_STATE" }
   | { type: "AUDIO_CHUNK"; chunk: { pcm: number[]; chunk_index: number; duration_ms: number } };
 
 export type MessageFromBackground =
-  | { type: "CONNECTED" }
-  | { type: "DISCONNECTED" }
-  | { type: "CONNECTION_ERROR"; error: string }
-  | { type: "SERVER_MESSAGE"; data: unknown };
+  | { type: "CAPTURE_STARTED" }
+  | { type: "CAPTURE_STOPPED" }
+  | { type: "CAPTURE_ERROR"; error: string }
+  | { type: "WS_CONNECTED" }
+  | { type: "WS_DISCONNECTED" }
+  | { type: "WS_ERROR"; error: string }
+  | { type: "COMBINED"; text: string }
+  | { type: "TRANSLATION"; text: string }
+  | { type: "TRANSCRIPT"; text: string }
+  | { type: "ERROR"; message: string };
+
+// Messages to content script
+export type MessageToContent =
+  | { type: "SHOW_CAPTION"; text: string }
+  | { type: "HIDE_CAPTION"; delay?: number }
+  | { type: "REMOVE_CAPTION" };
+
+// WebSocket messages from backend
+export interface WSCombinedMessage {
+  type: "combined";
+  seq: number;
+  full: string;
+}
+
+export interface WSTranslationMessage {
+  type: "translation";
+  seq: number;
+  text: string;
+}
+
+export interface WSPartialMessage {
+  type: "partial";
+  text: string;
+}
+
+export interface WSSessionMessage {
+  type: "session_started";
+  data: unknown;
+}
+
+export interface WSErrorMessage {
+  type: "error";
+  message: string;
+}
+
+export type WSMessage = WSCombinedMessage | WSTranslationMessage | WSPartialMessage | WSSessionMessage | WSErrorMessage;
 
 // Settings storage
 export interface StorageSettings {
   chunkDurationSec?: number;
-}
-
-// WebSocket message format
-export interface WebSocketMessage {
-  type: "translation" | "partial_transcript" | "committed_transcript" | "error";
-  confirmed?: string;
-  live?: string;
-  data?: {
-    text?: string;
-  };
-  message?: string;
 }
 
 export const DEFAULT_CHUNK_DURATION_SEC = 0.32;
