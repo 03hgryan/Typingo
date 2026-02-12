@@ -1,7 +1,7 @@
 // background.ts
 import { AudioStreamer } from "./lib/audioStreamer";
-import { getAsrProvider, setAsrProvider } from "./lib/settings";
-import type { AsrProvider } from "./lib/types";
+import { getAsrProvider, setAsrProvider, getTargetLang, setTargetLang, getSourceLang, setSourceLang } from "./lib/settings";
+import type { AsrProvider, TargetLanguage, SourceLanguage } from "./lib/types";
 
 console.log("Background script is running");
 
@@ -13,9 +13,10 @@ let hasOffscreenDocument = false;
 
 const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 const WS_BASE_URL = "ws://localhost:8000/stt";
+const PRODUCTION_WS_BASE_URL = "wss://fap-486860272818.us-west1.run.app/stt";
 
-function getWsUrl(provider: AsrProvider): string {
-  return `${WS_BASE_URL}/${provider}`;
+function getWsUrl(provider: AsrProvider, targetLang: string, sourceLang: string): string {
+  return `${WS_BASE_URL}/${provider}?target_lang=${encodeURIComponent(targetLang)}&source_lang=${encodeURIComponent(sourceLang)}`;
 }
 
 // ============ Offscreen Document ============
@@ -75,8 +76,8 @@ function removeCaptionFromTab() {
 
 // ============ State ============
 
-let confirmedKorean = "";
-let partialKorean = "";
+let confirmedTranslation = "";
+let partialTranslation = "";
 
 // ============ WebSocket ============
 
@@ -86,27 +87,29 @@ async function connectWebSocket() {
     return;
   }
 
-  confirmedKorean = "";
-  partialKorean = "";
+  confirmedTranslation = "";
+  partialTranslation = "";
 
   try {
     const provider = await getAsrProvider();
-    const wsUrl = getWsUrl(provider);
+    const targetLang = await getTargetLang();
+    const sourceLang = await getSourceLang();
+    const wsUrl = getWsUrl(provider, targetLang, sourceLang);
     console.log(`🔌 Connecting to WebSocket (${provider})...`);
     streamer = new AudioStreamer();
 
     await streamer.connect(wsUrl, (data) => {
       if (data.type === "confirmed_translation") {
-        confirmedKorean = data.text || "";
-        partialKorean = "";
-        chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedKorean }).catch(() => {});
-        sendCaptionToTab(confirmedKorean, "");
+        confirmedTranslation = data.text || "";
+        partialTranslation = "";
+        chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedTranslation }).catch(() => {});
+        sendCaptionToTab(confirmedTranslation, "");
       }
 
       if (data.type === "partial_translation") {
-        partialKorean = data.text || "";
-        chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", text: partialKorean }).catch(() => {});
-        sendCaptionToTab(confirmedKorean, partialKorean);
+        partialTranslation = data.text || "";
+        chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", text: partialTranslation }).catch(() => {});
+        sendCaptionToTab(confirmedTranslation, partialTranslation);
       }
 
       if (data.type === "partial") {
@@ -246,6 +249,34 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return false;
     }
     setAsrProvider(msg.provider).then(() => sendResponse({ success: true }));
+    return true;
+  }
+
+  if (msg.type === "GET_TARGET_LANG") {
+    getTargetLang().then((lang) => sendResponse({ lang }));
+    return true;
+  }
+
+  if (msg.type === "SET_TARGET_LANG") {
+    if (isCapturing) {
+      sendResponse({ success: false, error: "Cannot change language while translating" });
+      return false;
+    }
+    setTargetLang(msg.lang).then(() => sendResponse({ success: true }));
+    return true;
+  }
+
+  if (msg.type === "GET_SOURCE_LANG") {
+    getSourceLang().then((lang) => sendResponse({ lang }));
+    return true;
+  }
+
+  if (msg.type === "SET_SOURCE_LANG") {
+    if (isCapturing) {
+      sendResponse({ success: false, error: "Cannot change language while translating" });
+      return false;
+    }
+    setSourceLang(msg.lang).then(() => sendResponse({ success: true }));
     return true;
   }
 

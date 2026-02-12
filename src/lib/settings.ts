@@ -1,5 +1,5 @@
 // settings.ts - Chrome storage helpers
-import { DEFAULT_CHUNK_DURATION_SEC, DEFAULT_ASR_PROVIDER, type StorageSettings, type AsrProvider } from "./types";
+import { DEFAULT_CHUNK_DURATION_SEC, DEFAULT_ASR_PROVIDER, DEFAULT_TARGET_LANG, DEFAULT_SOURCE_LANG, type StorageSettings, type AsrProvider, type TargetLanguage, type SourceLanguage } from "./types";
 
 export async function getChunkDuration(): Promise<number> {
   return new Promise<number>((resolve) => {
@@ -26,5 +26,33 @@ export async function getAsrProvider(): Promise<AsrProvider> {
 export async function setAsrProvider(provider: AsrProvider): Promise<void> {
   return new Promise<void>((resolve) => {
     chrome.storage.local.set({ asrProvider: provider }, () => resolve());
+  });
+}
+
+export async function getTargetLang(): Promise<TargetLanguage> {
+  return new Promise<TargetLanguage>((resolve) => {
+    chrome.storage.local.get(["targetLang"], (result: StorageSettings) => {
+      resolve(result.targetLang ?? DEFAULT_TARGET_LANG);
+    });
+  });
+}
+
+export async function setTargetLang(lang: TargetLanguage): Promise<void> {
+  return new Promise<void>((resolve) => {
+    chrome.storage.local.set({ targetLang: lang }, () => resolve());
+  });
+}
+
+export async function getSourceLang(): Promise<SourceLanguage> {
+  return new Promise<SourceLanguage>((resolve) => {
+    chrome.storage.local.get(["sourceLang"], (result: StorageSettings) => {
+      resolve(result.sourceLang ?? DEFAULT_SOURCE_LANG);
+    });
+  });
+}
+
+export async function setSourceLang(lang: SourceLanguage): Promise<void> {
+  return new Promise<void>((resolve) => {
+    chrome.storage.local.set({ sourceLang: lang }, () => resolve());
   });
 }

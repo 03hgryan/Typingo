@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { AsrProvider } from "./lib/types";
+  import type { AsrProvider, TargetLanguage, SourceLanguage } from "./lib/types";
 
   let isCapturing = $state(false);
   let errorMessage = $state<string | null>(null);
   let selectedProvider = $state<AsrProvider>("elevenlabs");
+  let selectedLang = $state<TargetLanguage>("Korean");
+  let selectedSourceLang = $state<SourceLanguage>("en");
 
   let transcript = $state("");
   let confirmedTranslation = $state("");
@@ -25,6 +27,24 @@
     chrome.runtime.sendMessage({ type: "SET_ASR_PROVIDER", provider }, (response) => {
       if (response?.success) {
         selectedProvider = provider;
+      }
+    });
+  }
+
+  function onLangChange(e: Event) {
+    const lang = (e.target as HTMLSelectElement).value as TargetLanguage;
+    chrome.runtime.sendMessage({ type: "SET_TARGET_LANG", lang }, (response) => {
+      if (response?.success) {
+        selectedLang = lang;
+      }
+    });
+  }
+
+  function onSourceLangChange(e: Event) {
+    const lang = (e.target as HTMLSelectElement).value as SourceLanguage;
+    chrome.runtime.sendMessage({ type: "SET_SOURCE_LANG", lang }, (response) => {
+      if (response?.success) {
+        selectedSourceLang = lang;
       }
     });
   }
@@ -98,6 +118,18 @@
         selectedProvider = response.provider;
       }
     });
+
+    chrome.runtime.sendMessage({ type: "GET_TARGET_LANG" }, (response) => {
+      if (response?.lang) {
+        selectedLang = response.lang;
+      }
+    });
+
+    chrome.runtime.sendMessage({ type: "GET_SOURCE_LANG" }, (response) => {
+      if (response?.lang) {
+        selectedSourceLang = response.lang;
+      }
+    });
   });
 </script>
 
@@ -114,6 +146,33 @@
     <select id="provider" value={selectedProvider} onchange={onProviderChange} disabled={isCapturing}>
       <option value="elevenlabs">ElevenLabs</option>
       <option value="speechmatics">Speechmatics</option>
+    </select>
+  </div>
+
+  {#if selectedProvider === "speechmatics"}
+  <div class="provider-select">
+    <label for="sourceLang">Source</label>
+    <select id="sourceLang" value={selectedSourceLang} onchange={onSourceLangChange} disabled={isCapturing}>
+      <option value="en">English</option>
+      <option value="ko">Korean</option>
+      <option value="ja">Japanese</option>
+      <option value="zh">Chinese</option>
+      <option value="es">Spanish</option>
+      <option value="fr">French</option>
+      <option value="de">German</option>
+    </select>
+  </div>
+  {/if}
+
+  <div class="provider-select">
+    <label for="targetLang">Target</label>
+    <select id="targetLang" value={selectedLang} onchange={onLangChange} disabled={isCapturing}>
+      <option value="Korean">Korean</option>
+      <option value="Japanese">Japanese</option>
+      <option value="Chinese">Chinese</option>
+      <option value="Spanish">Spanish</option>
+      <option value="French">French</option>
+      <option value="German">German</option>
     </select>
   </div>
 
