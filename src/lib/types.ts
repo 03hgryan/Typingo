@@ -72,11 +72,18 @@ export type AsrProvider = "elevenlabs" | "speechmatics";
 export const DEFAULT_ASR_PROVIDER: AsrProvider = "elevenlabs";
 
 // Target language
-export type TargetLanguage = "Korean" | "Japanese" | "Chinese" | "Spanish" | "French" | "German";
+export type TargetLanguage = "English" | "Korean" | "Japanese" | "Chinese" | "Spanish" | "French" | "German";
 export const DEFAULT_TARGET_LANG: TargetLanguage = "Korean";
 
 // Source language (for Speechmatics ASR)
-export type SourceLanguage = "en" | "ko" | "ja" | "zh" | "es" | "fr" | "de";
+export type SourceLanguage =
+  | "ar" | "ba" | "eu" | "be" | "bn" | "bg" | "yue" | "ca" | "hr" | "cs"
+  | "da" | "nl" | "en" | "eo" | "et" | "fi" | "fr" | "gl" | "de" | "el"
+  | "he" | "hi" | "hu" | "id" | "ia" | "ga" | "it" | "ja" | "ko" | "lv"
+  | "lt" | "ms" | "en_ms" | "mt" | "cmn" | "cmn_en" | "cmn_en_ms_ta"
+  | "mr" | "mn" | "no" | "fa" | "pl" | "pt" | "ro" | "ru" | "sk" | "sl"
+  | "es" | "sw" | "sv" | "tl" | "ta" | "en_ta" | "th" | "tr" | "uk"
+  | "ur" | "ug" | "vi" | "cy";
 export const DEFAULT_SOURCE_LANG: SourceLanguage = "en";
 
 // Settings storage

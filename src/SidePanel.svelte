@@ -12,6 +12,81 @@
   let confirmedTranslation = $state("");
   let partialTranslation = $state("");
 
+  const sourceLanguages: { code: string; name: string }[] = [
+    { code: "ar", name: "Arabic" },
+    { code: "ba", name: "Bashkir" },
+    { code: "eu", name: "Basque" },
+    { code: "be", name: "Belarusian" },
+    { code: "bn", name: "Bengali" },
+    { code: "bg", name: "Bulgarian" },
+    { code: "yue", name: "Cantonese" },
+    { code: "ca", name: "Catalan" },
+    { code: "hr", name: "Croatian" },
+    { code: "cs", name: "Czech" },
+    { code: "da", name: "Danish" },
+    { code: "nl", name: "Dutch" },
+    { code: "en", name: "English" },
+    { code: "eo", name: "Esperanto" },
+    { code: "et", name: "Estonian" },
+    { code: "fi", name: "Finnish" },
+    { code: "fr", name: "French" },
+    { code: "gl", name: "Galician" },
+    { code: "de", name: "German" },
+    { code: "el", name: "Greek" },
+    { code: "he", name: "Hebrew" },
+    { code: "hi", name: "Hindi" },
+    { code: "hu", name: "Hungarian" },
+    { code: "id", name: "Indonesian" },
+    { code: "ia", name: "Interlingua" },
+    { code: "ga", name: "Irish" },
+    { code: "it", name: "Italian" },
+    { code: "ja", name: "Japanese" },
+    { code: "ko", name: "Korean" },
+    { code: "lv", name: "Latvian" },
+    { code: "lt", name: "Lithuanian" },
+    { code: "ms", name: "Malay" },
+    { code: "en_ms", name: "Malay & English" },
+    { code: "mt", name: "Maltese" },
+    { code: "cmn", name: "Mandarin" },
+    { code: "cmn_en", name: "Mandarin & English" },
+    { code: "cmn_en_ms_ta", name: "Mandarin Malay Tamil & English" },
+    { code: "mr", name: "Marathi" },
+    { code: "mn", name: "Mongolian" },
+    { code: "no", name: "Norwegian" },
+    { code: "fa", name: "Persian" },
+    { code: "pl", name: "Polish" },
+    { code: "pt", name: "Portuguese" },
+    { code: "ro", name: "Romanian" },
+    { code: "ru", name: "Russian" },
+    { code: "sk", name: "Slovak" },
+    { code: "sl", name: "Slovenian" },
+    { code: "es", name: "Spanish" },
+    { code: "sw", name: "Swahili" },
+    { code: "sv", name: "Swedish" },
+    { code: "tl", name: "Tagalog & English" },
+    { code: "ta", name: "Tamil" },
+    { code: "en_ta", name: "Tamil & English" },
+    { code: "th", name: "Thai" },
+    { code: "tr", name: "Turkish" },
+    { code: "uk", name: "Ukrainian" },
+    { code: "ur", name: "Urdu" },
+    { code: "ug", name: "Uyghur" },
+    { code: "vi", name: "Vietnamese" },
+    { code: "cy", name: "Welsh" },
+  ];
+
+  const targetLanguages = ["English", "Korean", "Japanese", "Chinese", "Spanish", "French", "German"];
+
+  // Map source codes to target language names for overlap detection
+  const sourceCodeToTargetName: Record<string, string> = {
+    en: "English", ko: "Korean", ja: "Japanese", cmn: "Chinese", yue: "Chinese",
+    es: "Spanish", fr: "French", de: "German",
+  };
+  const targetNameToSourceCodes: Record<string, string[]> = {
+    English: ["en"], Korean: ["ko"], Japanese: ["ja"], Chinese: ["cmn", "yue"],
+    Spanish: ["es"], French: ["fr"], German: ["de"],
+  };
+
   function clearError() {
     errorMessage = null;
   }
@@ -150,29 +225,22 @@
   </div>
 
   {#if selectedProvider === "speechmatics"}
-  <div class="provider-select">
-    <label for="sourceLang">Source</label>
-    <select id="sourceLang" value={selectedSourceLang} onchange={onSourceLangChange} disabled={isCapturing}>
-      <option value="en">English</option>
-      <option value="ko">Korean</option>
-      <option value="ja">Japanese</option>
-      <option value="zh">Chinese</option>
-      <option value="es">Spanish</option>
-      <option value="fr">French</option>
-      <option value="de">German</option>
-    </select>
-  </div>
+    <div class="provider-select">
+      <label for="sourceLang">Source</label>
+      <select id="sourceLang" value={selectedSourceLang} onchange={onSourceLangChange} disabled={isCapturing}>
+        {#each sourceLanguages as lang}
+          <option value={lang.code} disabled={sourceCodeToTargetName[lang.code] === selectedLang}>{lang.name}</option>
+        {/each}
+      </select>
+    </div>
   {/if}
 
   <div class="provider-select">
     <label for="targetLang">Target</label>
     <select id="targetLang" value={selectedLang} onchange={onLangChange} disabled={isCapturing}>
-      <option value="Korean">Korean</option>
-      <option value="Japanese">Japanese</option>
-      <option value="Chinese">Chinese</option>
-      <option value="Spanish">Spanish</option>
-      <option value="French">French</option>
-      <option value="German">German</option>
+      {#each targetLanguages as lang}
+        <option value={lang} disabled={targetNameToSourceCodes[lang]?.includes(selectedSourceLang)}>{lang}</option>
+      {/each}
     </select>
   </div>
 

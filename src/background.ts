@@ -1,6 +1,13 @@
 // background.ts
 import { AudioStreamer } from "./lib/audioStreamer";
-import { getAsrProvider, setAsrProvider, getTargetLang, setTargetLang, getSourceLang, setSourceLang } from "./lib/settings";
+import {
+  getAsrProvider,
+  setAsrProvider,
+  getTargetLang,
+  setTargetLang,
+  getSourceLang,
+  setSourceLang,
+} from "./lib/settings";
 import type { AsrProvider, TargetLanguage, SourceLanguage } from "./lib/types";
 
 console.log("Background script is running");
@@ -56,13 +63,15 @@ async function closeOffscreenDocument() {
 
 // ============ Caption Helpers ============
 
-function sendCaptionToTab(confirmed: string, partial: string) {
+function sendCaptionToTab(confirmed: string, partial: string, speaker?: string, prevConfirmed?: string) {
   if (activeTabId) {
     chrome.tabs
       .sendMessage(activeTabId, {
         type: "SHOW_CAPTION",
         confirmed,
         partial,
+        speaker,
+        prevConfirmed: prevConfirmed || "",
       })
       .catch(() => {});
   }
@@ -77,6 +86,8 @@ function removeCaptionFromTab() {
 // ============ State ============
 
 let confirmedTranslation = "";
+let prevConfirmedTranslation = "";
+let accumulatedConfirmedTranslation = "";
 let partialTranslation = "";
 
 // ============ WebSocket ============
@@ -88,6 +99,8 @@ async function connectWebSocket() {
   }
 
   confirmedTranslation = "";
+  prevConfirmedTranslation = "";
+  accumulatedConfirmedTranslation = "";
   partialTranslation = "";
 
   try {
@@ -100,16 +113,20 @@ async function connectWebSocket() {
 
     await streamer.connect(wsUrl, (data) => {
       if (data.type === "confirmed_translation") {
+        prevConfirmedTranslation = confirmedTranslation;
         confirmedTranslation = data.text || "";
+        accumulatedConfirmedTranslation = accumulatedConfirmedTranslation
+          ? accumulatedConfirmedTranslation + " " + confirmedTranslation
+          : confirmedTranslation;
         partialTranslation = "";
         chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedTranslation }).catch(() => {});
-        sendCaptionToTab(confirmedTranslation, "");
+        sendCaptionToTab(confirmedTranslation, "", data.speaker, prevConfirmedTranslation);
       }
 
       if (data.type === "partial_translation") {
         partialTranslation = data.text || "";
         chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", text: partialTranslation }).catch(() => {});
-        sendCaptionToTab(confirmedTranslation, partialTranslation);
+        sendCaptionToTab(confirmedTranslation, partialTranslation, data.speaker);
       }
 
       if (data.type === "partial") {
