@@ -4,7 +4,16 @@ console.log("Content script loaded");
 let captionContainer: HTMLDivElement | null = null;
 let hideTimeout: number | null = null;
 
-const SPEAKER_COLORS = ["#60a5fa", "#34d399", "#f472b6", "#fbbf24", "#a78bfa", "#fb923c"];
+const SPEAKER_COLORS = [
+  "#60a5fa",
+  "#34d399",
+  "#f472b6",
+  "#fbbf24",
+  "#a78bfa",
+  "#fb923c",
+];
+
+const SILENCE_TIMEOUT_MS = 5_000;
 
 interface SpeakerBox {
   el: HTMLDivElement;
@@ -12,6 +21,7 @@ interface SpeakerBox {
   confirmedLine: HTMLDivElement;
   partialSpan: HTMLSpanElement;
   prevFadeTimeout: number | null;
+  silenceTimeout: number | null;
 }
 
 const speakers = new Map<string, SpeakerBox>();
@@ -98,13 +108,37 @@ function getOrCreateSpeakerBox(speakerId: string): SpeakerBox {
     confirmedLine,
     partialSpan,
     prevFadeTimeout: null,
+    silenceTimeout: null,
   };
 
   speakers.set(speakerId, box);
   return box;
 }
 
-function showCaption(confirmed: string, partial: string, speaker?: string, prevConfirmed?: string) {
+function hideSpeakerBox(speakerId: string) {
+  const box = speakers.get(speakerId);
+  if (!box || !captionContainer) return;
+
+  box.el.style.display = "none";
+  if (box.silenceTimeout) {
+    clearTimeout(box.silenceTimeout);
+    box.silenceTimeout = null;
+  }
+
+  const anyVisible = Array.from(speakers.values()).some(
+    (b) => b.el.style.display !== "none",
+  );
+  if (!anyVisible) {
+    captionContainer.style.opacity = "0";
+  }
+}
+
+function showCaption(
+  confirmed: string,
+  partial: string,
+  speaker?: string,
+  prevConfirmed?: string,
+) {
   if (!captionContainer) createCaptionContainer();
   if (!captionContainer) return;
 
@@ -112,11 +146,7 @@ function showCaption(confirmed: string, partial: string, speaker?: string, prevC
   const box = getOrCreateSpeakerBox(speakerId);
 
   if (!confirmed && !partial) {
-    box.el.style.display = "none";
-    const anyVisible = Array.from(speakers.values()).some((b) => b.el.style.display !== "none");
-    if (!anyVisible) {
-      captionContainer.style.opacity = "0";
-    }
+    hideSpeakerBox(speakerId);
     return;
   }
 
@@ -127,6 +157,15 @@ function showCaption(confirmed: string, partial: string, speaker?: string, prevC
     clearTimeout(hideTimeout);
     hideTimeout = null;
   }
+
+  // Reset silence timeout for this speaker
+  if (box.silenceTimeout) {
+    clearTimeout(box.silenceTimeout);
+  }
+  box.silenceTimeout = window.setTimeout(() => {
+    hideSpeakerBox(speakerId);
+    box.silenceTimeout = null;
+  }, SILENCE_TIMEOUT_MS);
 
   // --- Previous confirmed ---
   if (prevConfirmed) {
@@ -150,7 +189,10 @@ function showCaption(confirmed: string, partial: string, speaker?: string, prevC
   if (textNode && textNode.nodeType === Node.TEXT_NODE) {
     textNode.textContent = confirmed;
   } else {
-    box.confirmedLine.insertBefore(document.createTextNode(confirmed), box.partialSpan);
+    box.confirmedLine.insertBefore(
+      document.createTextNode(confirmed),
+      box.partialSpan,
+    );
   }
 
   // --- Partial text ---
@@ -162,6 +204,10 @@ function removeCaptionOverlay() {
     if (box.prevFadeTimeout) {
       clearTimeout(box.prevFadeTimeout);
       box.prevFadeTimeout = null;
+    }
+    if (box.silenceTimeout) {
+      clearTimeout(box.silenceTimeout);
+      box.silenceTimeout = null;
     }
   }
   speakers.clear();
@@ -184,7 +230,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "SHOW_CAPTION") {
-    showCaption(message.confirmed || "", message.partial || "", message.speaker, message.prevConfirmed);
+    showCaption(
+      message.confirmed || "",
+      message.partial || "",
+      message.speaker,
+      message.prevConfirmed,
+    );
     return false;
   }
 

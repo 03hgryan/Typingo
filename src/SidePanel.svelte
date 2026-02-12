@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import type { AsrProvider, TargetLanguage, SourceLanguage } from "./lib/types";
 
   let isCapturing = $state(false);
@@ -11,6 +11,7 @@
   let transcript = $state("");
   let confirmedTranslation = $state("");
   let partialTranslation = $state("");
+  let translationBox: HTMLDivElement;
 
   const sourceLanguages: { code: string; name: string }[] = [
     { code: "ar", name: "Arabic" },
@@ -86,6 +87,16 @@
     English: ["en"], Korean: ["ko"], Japanese: ["ja"], Chinese: ["cmn", "yue"],
     Spanish: ["es"], French: ["fr"], German: ["de"],
   };
+
+  $effect(() => {
+    confirmedTranslation;
+    partialTranslation;
+    tick().then(() => {
+      if (translationBox) {
+        translationBox.scrollTop = translationBox.scrollHeight;
+      }
+    });
+  });
 
   function clearError() {
     errorMessage = null;
@@ -258,7 +269,7 @@
   <!-- Translation -->
   <div class="section">
     <div class="label">Translation</div>
-    <div class="translation-box">
+    <div class="translation-box" bind:this={translationBox}>
       {#if !confirmedTranslation && !partialTranslation}
         <span class="placeholder">Waiting for speech...</span>
       {:else}
@@ -426,6 +437,8 @@
     border-radius: 12px;
     padding: 16px;
     min-height: 120px;
+    max-height: 300px;
+    overflow-y: auto;
     font-size: 1.1rem;
     line-height: 1.7;
   }
