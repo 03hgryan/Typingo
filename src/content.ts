@@ -18,6 +18,8 @@ const SILENCE_TIMEOUT_MS = 5_000;
 interface SpeakerBox {
   el: HTMLDivElement;
   prevLine: HTMLDivElement;
+  transcriptLine: HTMLDivElement;
+  transcriptPartialSpan: HTMLSpanElement;
   confirmedLine: HTMLDivElement;
   partialSpan: HTMLSpanElement;
   prevFadeTimeout: number | null;
@@ -91,6 +93,13 @@ function getOrCreateSpeakerBox(speakerId: string): SpeakerBox {
   const prevLine = document.createElement("div");
   prevLine.style.cssText = `color: #888; display: none;`;
 
+  const transcriptLine = document.createElement("div");
+  transcriptLine.style.cssText = `color: #8ab4f8; font-size: 0.85em; opacity: 0.8;`;
+
+  const transcriptPartialSpan = document.createElement("span");
+  transcriptPartialSpan.style.color = "#5a8ac0";
+  transcriptLine.appendChild(transcriptPartialSpan);
+
   const confirmedLine = document.createElement("div");
   confirmedLine.style.color = "#fff";
 
@@ -99,12 +108,15 @@ function getOrCreateSpeakerBox(speakerId: string): SpeakerBox {
   confirmedLine.appendChild(partialSpan);
 
   el.appendChild(prevLine);
+  el.appendChild(transcriptLine);
   el.appendChild(confirmedLine);
   captionContainer!.appendChild(el);
 
   const box: SpeakerBox = {
     el,
     prevLine,
+    transcriptLine,
+    transcriptPartialSpan,
     confirmedLine,
     partialSpan,
     prevFadeTimeout: null,
@@ -133,23 +145,11 @@ function hideSpeakerBox(speakerId: string) {
   }
 }
 
-function showCaption(
-  confirmed: string,
-  partial: string,
-  speaker?: string,
-  prevConfirmed?: string,
-) {
+function showSpeakerBox(speakerId: string) {
   if (!captionContainer) createCaptionContainer();
-  if (!captionContainer) return;
+  if (!captionContainer) return null;
 
-  const speakerId = speaker || "default";
   const box = getOrCreateSpeakerBox(speakerId);
-
-  if (!confirmed && !partial) {
-    hideSpeakerBox(speakerId);
-    return;
-  }
-
   box.el.style.display = "";
   captionContainer.style.opacity = "1";
 
@@ -158,7 +158,6 @@ function showCaption(
     hideTimeout = null;
   }
 
-  // Reset silence timeout for this speaker
   if (box.silenceTimeout) {
     clearTimeout(box.silenceTimeout);
   }
@@ -166,6 +165,25 @@ function showCaption(
     hideSpeakerBox(speakerId);
     box.silenceTimeout = null;
   }, SILENCE_TIMEOUT_MS);
+
+  return box;
+}
+
+function showTranslationCaption(
+  confirmed: string,
+  partial: string,
+  speaker?: string,
+  prevConfirmed?: string,
+) {
+  const speakerId = speaker || "default";
+
+  if (!confirmed && !partial) {
+    hideSpeakerBox(speakerId);
+    return;
+  }
+
+  const box = showSpeakerBox(speakerId);
+  if (!box) return;
 
   // --- Previous confirmed ---
   if (prevConfirmed) {
@@ -184,7 +202,6 @@ function showCaption(
   }
 
   // --- Confirmed text ---
-  // Set text before the partial span
   const textNode = box.confirmedLine.firstChild;
   if (textNode && textNode.nodeType === Node.TEXT_NODE) {
     textNode.textContent = confirmed;
@@ -197,6 +214,34 @@ function showCaption(
 
   // --- Partial text ---
   box.partialSpan.textContent = partial ? " " + partial : "";
+}
+
+function showTranscriptCaption(
+  confirmed: string,
+  partial: string,
+  speaker?: string,
+  prevConfirmed?: string,
+) {
+  const speakerId = speaker || "default";
+
+  if (!confirmed && !partial) return;
+
+  const box = showSpeakerBox(speakerId);
+  if (!box) return;
+
+  // --- Transcript confirmed ---
+  const transcriptNode = box.transcriptLine.firstChild;
+  if (transcriptNode && transcriptNode.nodeType === Node.TEXT_NODE) {
+    transcriptNode.textContent = confirmed;
+  } else {
+    box.transcriptLine.insertBefore(
+      document.createTextNode(confirmed),
+      box.transcriptPartialSpan,
+    );
+  }
+
+  // --- Transcript partial ---
+  box.transcriptPartialSpan.textContent = partial ? " " + partial : "";
 }
 
 function removeCaptionOverlay() {
@@ -229,8 +274,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "SHOW_CAPTION") {
-    showCaption(
+  if (message.type === "SHOW_TRANSLATION_CAPTION") {
+    showTranslationCaption(
+      message.confirmed || "",
+      message.partial || "",
+      message.speaker,
+      message.prevConfirmed,
+    );
+    return false;
+  }
+
+  if (message.type === "SHOW_TRANSCRIPT_CAPTION") {
+    showTranscriptCaption(
       message.confirmed || "",
       message.partial || "",
       message.speaker,

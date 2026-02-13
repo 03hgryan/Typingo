@@ -9,8 +9,11 @@
   let selectedSourceLang = $state<SourceLanguage>("en");
 
   let transcript = $state("");
+  let confirmedTranscript = $state("");
+  let partialTranscriptText = $state("");
   let confirmedTranslation = $state("");
   let partialTranslation = $state("");
+  let transcriptBox: HTMLDivElement;
   let translationBox: HTMLDivElement;
 
   const sourceLanguages: { code: string; name: string }[] = [
@@ -89,6 +92,16 @@
   };
 
   $effect(() => {
+    confirmedTranscript;
+    partialTranscriptText;
+    tick().then(() => {
+      if (transcriptBox) {
+        transcriptBox.scrollTop = transcriptBox.scrollHeight;
+      }
+    });
+  });
+
+  $effect(() => {
     confirmedTranslation;
     partialTranslation;
     tick().then(() => {
@@ -104,6 +117,8 @@
 
   function resetState() {
     transcript = "";
+    confirmedTranscript = "";
+    partialTranscriptText = "";
     confirmedTranslation = "";
     partialTranslation = "";
   }
@@ -160,8 +175,17 @@
         transcript = message.text || "";
       }
 
+      if (message.type === "CONFIRMED_TRANSCRIPT") {
+        confirmedTranscript = (confirmedTranscript ? confirmedTranscript + " " : "") + (message.text || "");
+        partialTranscriptText = "";
+      }
+
+      if (message.type === "PARTIAL_TRANSCRIPT_TEXT") {
+        partialTranscriptText = message.text || "";
+      }
+
       if (message.type === "CONFIRMED_TRANSLATION") {
-        confirmedTranslation = message.text || "";
+        confirmedTranslation = (confirmedTranslation ? confirmedTranslation + " " : "") + (message.text || "");
         partialTranslation = "";
       }
 
@@ -265,6 +289,21 @@
       <button onclick={clearError}>×</button>
     </div>
   {/if}
+
+  <!-- Transcript -->
+  <div class="section">
+    <div class="label">Transcript</div>
+    <div class="transcript-box" bind:this={transcriptBox}>
+      {#if !confirmedTranscript && !partialTranscriptText}
+        <span class="placeholder">Waiting for speech...</span>
+      {:else}
+        <span class="confirmed-transcript">{confirmedTranscript}</span>
+        {#if partialTranscriptText}
+          <span class="partial-transcript"> {partialTranscriptText}</span>
+        {/if}
+      {/if}
+    </div>
+  </div>
 
   <!-- Translation -->
   <div class="section">
@@ -441,6 +480,25 @@
     overflow-y: auto;
     font-size: 1.1rem;
     line-height: 1.7;
+  }
+
+  .transcript-box {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 16px;
+    min-height: 80px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .confirmed-transcript {
+    color: #8ab4f8;
+  }
+  .partial-transcript {
+    color: #4a7ab5;
   }
 
   .placeholder {

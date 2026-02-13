@@ -63,11 +63,25 @@ async function closeOffscreenDocument() {
 
 // ============ Caption Helpers ============
 
-function sendCaptionToTab(confirmed: string, partial: string, speaker?: string, prevConfirmed?: string) {
+function sendTranslationCaption(confirmed: string, partial: string, speaker?: string, prevConfirmed?: string) {
   if (activeTabId) {
     chrome.tabs
       .sendMessage(activeTabId, {
-        type: "SHOW_CAPTION",
+        type: "SHOW_TRANSLATION_CAPTION",
+        confirmed,
+        partial,
+        speaker,
+        prevConfirmed: prevConfirmed || "",
+      })
+      .catch(() => {});
+  }
+}
+
+function sendTranscriptCaption(confirmed: string, partial: string, speaker?: string, prevConfirmed?: string) {
+  if (activeTabId) {
+    chrome.tabs
+      .sendMessage(activeTabId, {
+        type: "SHOW_TRANSCRIPT_CAPTION",
         confirmed,
         partial,
         speaker,
@@ -83,12 +97,21 @@ function removeCaptionFromTab() {
   }
 }
 
-// ============ State ============
+// ============ Per-Speaker State ============
 
-let confirmedTranslation = "";
-let prevConfirmedTranslation = "";
-let accumulatedConfirmedTranslation = "";
-let partialTranslation = "";
+interface SpeakerState {
+  confirmed: string;
+  prev: string;
+  partial: string;
+}
+
+const speakerTranslation: Record<string, SpeakerState> = {};
+const speakerTranscript: Record<string, SpeakerState> = {};
+
+function getSpeakerState(map: Record<string, SpeakerState>, speaker: string): SpeakerState {
+  if (!map[speaker]) map[speaker] = { confirmed: "", prev: "", partial: "" };
+  return map[speaker];
+}
 
 // ============ WebSocket ============
 
@@ -98,10 +121,8 @@ async function connectWebSocket() {
     return;
   }
 
-  confirmedTranslation = "";
-  prevConfirmedTranslation = "";
-  accumulatedConfirmedTranslation = "";
-  partialTranslation = "";
+  for (const key of Object.keys(speakerTranslation)) delete speakerTranslation[key];
+  for (const key of Object.keys(speakerTranscript)) delete speakerTranscript[key];
 
   try {
     const provider = await getAsrProvider();
@@ -112,21 +133,40 @@ async function connectWebSocket() {
     streamer = new AudioStreamer();
 
     await streamer.connect(wsUrl, (data) => {
+      if (data.type === "confirmed_transcript") {
+        const speaker = data.speaker || "default";
+        const st = getSpeakerState(speakerTranscript, speaker);
+        st.prev = st.confirmed;
+        st.confirmed = data.text || "";
+        st.partial = "";
+        chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSCRIPT", speaker, text: st.confirmed }).catch(() => {});
+        sendTranscriptCaption(st.confirmed, "", speaker, st.prev);
+      }
+
+      if (data.type === "partial_transcript") {
+        const speaker = data.speaker || "default";
+        const st = getSpeakerState(speakerTranscript, speaker);
+        st.partial = data.text || "";
+        chrome.runtime.sendMessage({ type: "PARTIAL_TRANSCRIPT_TEXT", speaker, text: st.partial }).catch(() => {});
+        sendTranscriptCaption(st.confirmed, st.partial, speaker);
+      }
+
       if (data.type === "confirmed_translation") {
-        prevConfirmedTranslation = confirmedTranslation;
-        confirmedTranslation = data.text || "";
-        accumulatedConfirmedTranslation = accumulatedConfirmedTranslation
-          ? accumulatedConfirmedTranslation + " " + confirmedTranslation
-          : confirmedTranslation;
-        partialTranslation = "";
-        chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", text: confirmedTranslation }).catch(() => {});
-        sendCaptionToTab(confirmedTranslation, "", data.speaker, prevConfirmedTranslation);
+        const speaker = data.speaker || "default";
+        const st = getSpeakerState(speakerTranslation, speaker);
+        st.prev = st.confirmed;
+        st.confirmed = data.text || "";
+        st.partial = "";
+        chrome.runtime.sendMessage({ type: "CONFIRMED_TRANSLATION", speaker, text: st.confirmed }).catch(() => {});
+        sendTranslationCaption(st.confirmed, "", speaker, st.prev);
       }
 
       if (data.type === "partial_translation") {
-        partialTranslation = data.text || "";
-        chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", text: partialTranslation }).catch(() => {});
-        sendCaptionToTab(confirmedTranslation, partialTranslation, data.speaker);
+        const speaker = data.speaker || "default";
+        const st = getSpeakerState(speakerTranslation, speaker);
+        st.partial = data.text || "";
+        chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", speaker, text: st.partial }).catch(() => {});
+        sendTranslationCaption(st.confirmed, st.partial, speaker);
       }
 
       if (data.type === "partial") {
