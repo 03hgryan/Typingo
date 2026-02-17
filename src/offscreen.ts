@@ -5,7 +5,7 @@ let audioContext: AudioContext | null = null;
 let workletNode: AudioWorkletNode | null = null;
 let mediaStream: MediaStream | null = null;
 
-async function startCapture(streamId: string) {
+async function startCapture(streamId: string, delayMs: number = 5000) {
   try {
     console.log("Starting audio capture with stream ID:", streamId);
 
@@ -47,9 +47,12 @@ async function startCapture(streamId: string) {
     // Connect to worklet for processing
     source.connect(workletNode);
 
-    // IMPORTANT: Connect to destination to play audio through speakers
-    // When capturing tab audio, we take exclusive control - must pipe it back for playback
-    source.connect(audioContext.destination);
+    // Delayed playback: translation pipeline gets a head start
+    const audioDelaySec = delayMs / 1000;
+    const delayNode = audioContext.createDelay(audioDelaySec + 1);
+    delayNode.delayTime.value = audioDelaySec;
+    source.connect(delayNode);
+    delayNode.connect(audioContext.destination);
 
     console.log("Audio capture started successfully in offscreen document");
 
@@ -59,7 +62,7 @@ async function startCapture(streamId: string) {
     console.error("Failed to start audio capture:", error);
     chrome.runtime.sendMessage({
       type: "OFFSCREEN_CAPTURE_ERROR",
-      error: String(error)
+      error: String(error),
     });
   }
 }
@@ -85,7 +88,7 @@ function stopCapture() {
 // Listen for messages from background
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "START_OFFSCREEN_CAPTURE") {
-    startCapture(message.streamId);
+    startCapture(message.streamId, message.delayMs);
   }
 
   if (message.type === "STOP_OFFSCREEN_CAPTURE") {

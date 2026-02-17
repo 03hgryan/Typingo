@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "AST",
+  "name": "Typing'o'",
   "version": "1.0",
-  "description": "Automatic Speech Translation.",
+  "description": "Real time streaming media translation",
   "action": {
-    "default_icon": "public/vite.svg"
+    "default_icon": "favicon-48x48.png",
+    "default_popup": "index.html"
   },
-  "permissions": ["activeTab", "scripting", "tabs", "tabCapture", "sidePanel", "offscreen", "storage"],
+  "permissions": ["activeTab", "tabs", "tabCapture", "sidePanel", "offscreen", "storage"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"

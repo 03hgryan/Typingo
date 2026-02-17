@@ -1,10 +1,5 @@
 <script lang="ts">
-  import router from "svelte-spa-router";
-  import AppPage from "./routes/app/+page.svelte";
-
-  const routes = {
-    "/": AppPage,
-  };
+  import Popup from "./Popup.svelte";
 </script>
 
-<svelte:component this={router} {routes} />
+<Popup />

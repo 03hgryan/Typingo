@@ -4,9 +4,12 @@
 
   let isCapturing = $state(false);
   let errorMessage = $state<string | null>(null);
-  let selectedProvider = $state<AsrProvider>("elevenlabs");
-  let selectedLang = $state<TargetLanguage>("Korean");
+  let diarization = $state(false);
   let selectedSourceLang = $state<SourceLanguage>("en");
+  let selectedLang = $state<TargetLanguage>("Korean");
+  let selectedAggressiveness = $state(1);
+  let selectedUpdateFrequency = $state(2);
+  let selectedDelayMs = $state(0);
 
   let transcript = $state("");
   let confirmedTranscript = $state("");
@@ -81,7 +84,6 @@
 
   const targetLanguages = ["English", "Korean", "Japanese", "Chinese", "Spanish", "French", "German"];
 
-  // Map source codes to target language names for overlap detection
   const sourceCodeToTargetName: Record<string, string> = {
     en: "English", ko: "Korean", ja: "Japanese", cmn: "Chinese", yue: "Chinese",
     es: "Spanish", fr: "French", de: "German",
@@ -115,19 +117,12 @@
     errorMessage = null;
   }
 
-  function resetState() {
-    transcript = "";
-    confirmedTranscript = "";
-    partialTranscriptText = "";
-    confirmedTranslation = "";
-    partialTranslation = "";
-  }
-
-  function onProviderChange(e: Event) {
-    const provider = (e.target as HTMLSelectElement).value as AsrProvider;
+  function onDiarizationChange(e: Event) {
+    const checked = (e.target as HTMLInputElement).checked;
+    const provider: AsrProvider = checked ? "speechmatics" : "elevenlabs";
     chrome.runtime.sendMessage({ type: "SET_ASR_PROVIDER", provider }, (response) => {
       if (response?.success) {
-        selectedProvider = provider;
+        diarization = checked;
       }
     });
   }
@@ -150,23 +145,31 @@
     });
   }
 
-  async function toggleCapture() {
-    if (!isCapturing) {
-      chrome.runtime.sendMessage({ type: "START_CAPTURE" }, (response) => {
-        if (response?.success) {
-          errorMessage = null;
-          resetState();
-        } else {
-          errorMessage = `Failed to start: ${response?.error || "Unknown error"}`;
-        }
-      });
-    } else {
-      chrome.runtime.sendMessage({ type: "STOP_CAPTURE" }, (response) => {
-        if (response?.success) {
-          isCapturing = false;
-        }
-      });
-    }
+  function onAggressivenessChange(e: Event) {
+    const aggressiveness = Number((e.target as HTMLSelectElement).value);
+    chrome.runtime.sendMessage({ type: "SET_AGGRESSIVENESS", aggressiveness }, (response) => {
+      if (response?.success) {
+        selectedAggressiveness = aggressiveness;
+      }
+    });
+  }
+
+  function onUpdateFrequencyChange(e: Event) {
+    const updateFrequency = Number((e.target as HTMLSelectElement).value);
+    chrome.runtime.sendMessage({ type: "SET_UPDATE_FREQUENCY", updateFrequency }, (response) => {
+      if (response?.success) {
+        selectedUpdateFrequency = updateFrequency;
+      }
+    });
+  }
+
+  function onDelayMsChange(e: Event) {
+    const delayMs = Number((e.target as HTMLSelectElement).value);
+    chrome.runtime.sendMessage({ type: "SET_DELAY_MS", delayMs }, (response) => {
+      if (response?.success) {
+        selectedDelayMs = delayMs;
+      }
+    });
   }
 
   onMount(() => {
@@ -196,7 +199,6 @@
       if (message.type === "CAPTURE_STARTED") {
         isCapturing = true;
         errorMessage = null;
-        resetState();
       }
 
       if (message.type === "CAPTURE_STOPPED") {
@@ -225,7 +227,7 @@
 
     chrome.runtime.sendMessage({ type: "GET_ASR_PROVIDER" }, (response) => {
       if (response?.provider) {
-        selectedProvider = response.provider;
+        diarization = response.provider === "speechmatics";
       }
     });
 
@@ -240,27 +242,45 @@
         selectedSourceLang = response.lang;
       }
     });
+
+    chrome.runtime.sendMessage({ type: "GET_AGGRESSIVENESS" }, (response) => {
+      if (response?.aggressiveness != null) {
+        selectedAggressiveness = response.aggressiveness;
+      }
+    });
+
+    chrome.runtime.sendMessage({ type: "GET_UPDATE_FREQUENCY" }, (response) => {
+      if (response?.updateFrequency != null) {
+        selectedUpdateFrequency = response.updateFrequency;
+      }
+    });
+
+    chrome.runtime.sendMessage({ type: "GET_DELAY_MS" }, (response) => {
+      if (response?.delayMs != null) {
+        selectedDelayMs = response.delayMs;
+      }
+    });
   });
 </script>
 
 <div class="container">
   <header>
-    <h1>🎙️ Live Translation</h1>
+    <h1>Settings</h1>
     <span class="status" class:active={isCapturing}>
       {isCapturing ? "● Recording" : "○ Idle"}
     </span>
   </header>
 
-  <div class="provider-select">
-    <label for="provider">Provider</label>
-    <select id="provider" value={selectedProvider} onchange={onProviderChange} disabled={isCapturing}>
-      <option value="elevenlabs">ElevenLabs</option>
-      <option value="speechmatics">Speechmatics</option>
-    </select>
+  <div class="setting-row">
+    <label for="diarization">Diarization</label>
+    <label class="toggle">
+      <input type="checkbox" id="diarization" checked={diarization} onchange={onDiarizationChange} disabled={isCapturing} />
+      <span class="slider"></span>
+    </label>
   </div>
 
-  {#if selectedProvider === "speechmatics"}
-    <div class="provider-select">
+  {#if diarization}
+    <div class="setting-row">
       <label for="sourceLang">Source</label>
       <select id="sourceLang" value={selectedSourceLang} onchange={onSourceLangChange} disabled={isCapturing}>
         {#each sourceLanguages as lang}
@@ -270,7 +290,7 @@
     </div>
   {/if}
 
-  <div class="provider-select">
+  <div class="setting-row">
     <label for="targetLang">Target</label>
     <select id="targetLang" value={selectedLang} onchange={onLangChange} disabled={isCapturing}>
       {#each targetLanguages as lang}
@@ -279,9 +299,35 @@
     </select>
   </div>
 
-  <button class="capture-btn" class:active={isCapturing} onclick={toggleCapture}>
-    {isCapturing ? "⏹ Stop" : "▶ Start"}
-  </button>
+  <div class="setting-row">
+    <label for="aggressiveness">Speed</label>
+    <select id="aggressiveness" value={selectedAggressiveness} onchange={onAggressivenessChange} disabled={isCapturing}>
+      <option value={1}>High (faster, less accurate)</option>
+      <option value={2}>Low (slower, more accurate)</option>
+    </select>
+  </div>
+
+  <div class="setting-row">
+    <label for="updateFreq">Frequency</label>
+    <select id="updateFreq" value={selectedUpdateFrequency} onchange={onUpdateFrequencyChange} disabled={isCapturing}>
+      <option value={1}>Every update</option>
+      <option value={2}>Every 2nd update</option>
+      <option value={3}>Every 3rd update</option>
+      <option value={4}>Every 4th update</option>
+    </select>
+  </div>
+
+  <div class="setting-row">
+    <label for="delayMs">Delay</label>
+    <select id="delayMs" value={selectedDelayMs} onchange={onDelayMsChange} disabled={isCapturing}>
+      <option value={0}>No delay</option>
+      <option value={2000}>2 seconds</option>
+      <option value={3000}>3 seconds</option>
+      <option value={5000}>5 seconds</option>
+      <option value={7000}>7 seconds</option>
+      <option value={10000}>10 seconds</option>
+    </select>
+  </div>
 
   {#if errorMessage}
     <div class="error">
@@ -290,9 +336,9 @@
     </div>
   {/if}
 
-  <!-- Transcript -->
-  <div class="section">
-    <div class="label">Transcript</div>
+  <!-- Transcript (collapsible) -->
+  <details class="section-details">
+    <summary>Transcript</summary>
     <div class="transcript-box" bind:this={transcriptBox}>
       {#if !confirmedTranscript && !partialTranscriptText}
         <span class="placeholder">Waiting for speech...</span>
@@ -303,11 +349,11 @@
         {/if}
       {/if}
     </div>
-  </div>
+  </details>
 
-  <!-- Translation -->
-  <div class="section">
-    <div class="label">Translation</div>
+  <!-- Translation (collapsible) -->
+  <details class="section-details">
+    <summary>Translation</summary>
     <div class="translation-box" bind:this={translationBox}>
       {#if !confirmedTranslation && !partialTranslation}
         <span class="placeholder">Waiting for speech...</span>
@@ -318,22 +364,19 @@
         {/if}
       {/if}
     </div>
-  </div>
+  </details>
 
   <!-- Raw Transcript -->
-  <details class="transcript-details">
+  <details class="section-details">
     <summary>Raw transcript</summary>
-    <p>{transcript || "—"}</p>
+    <p class="raw-text">{transcript || "—"}</p>
   </details>
 </div>
 
 <style>
   .container {
     padding: 16px;
-    font-family:
-      system-ui,
-      -apple-system,
-      sans-serif;
+    font-family: "Inter", system-ui, sans-serif;
     height: 100vh;
     background: #0a0a0a;
     color: #fff;
@@ -370,23 +413,18 @@
   }
 
   @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.7;
-    }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
   }
 
-  .provider-select {
+  .setting-row {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 12px;
   }
 
-  .provider-select label {
+  .setting-row label {
     font-size: 0.75rem;
     color: #888;
     text-transform: uppercase;
@@ -394,7 +432,7 @@
     white-space: nowrap;
   }
 
-  .provider-select select {
+  .setting-row select {
     flex: 1;
     padding: 8px 12px;
     font-size: 0.85rem;
@@ -409,31 +447,59 @@
     background-position: right 10px center;
   }
 
-  .provider-select select:disabled {
+  .setting-row select:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
 
-  .capture-btn {
-    width: 100%;
-    padding: 14px;
-    font-size: 1rem;
-    font-weight: 600;
-    border: none;
-    border-radius: 10px;
+  /* Toggle switch */
+  .toggle {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    margin-left: auto;
+  }
+
+  .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .slider {
+    position: absolute;
     cursor: pointer;
-    transition: all 0.2s;
-    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-    color: white;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #333;
+    border-radius: 22px;
+    transition: 0.2s;
   }
 
-  .capture-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  .slider::before {
+    content: "";
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: #888;
+    border-radius: 50%;
+    transition: 0.2s;
   }
 
-  .capture-btn.active {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  .toggle input:checked + .slider {
+    background: #1d4ed8;
+  }
+
+  .toggle input:checked + .slider::before {
+    transform: translateX(18px);
+    background: #fff;
+  }
+
+  .toggle input:disabled + .slider {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .error {
@@ -458,16 +524,24 @@
     padding: 0;
   }
 
-  .section {
-    margin-top: 20px;
+  .section-details {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: #888;
   }
 
-  .label {
-    font-size: 0.7rem;
-    color: #555;
+  .section-details summary {
+    cursor: pointer;
+    padding: 8px 0;
+    user-select: none;
+    font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 8px;
+    color: #666;
+  }
+
+  .section-details summary:hover {
+    color: #aaa;
   }
 
   .translation-box {
@@ -480,6 +554,7 @@
     overflow-y: auto;
     font-size: 1.1rem;
     line-height: 1.7;
+    margin-top: 8px;
   }
 
   .transcript-box {
@@ -492,39 +567,16 @@
     overflow-y: auto;
     font-size: 0.95rem;
     line-height: 1.7;
+    margin-top: 8px;
   }
 
-  .confirmed-transcript {
-    color: #8ab4f8;
-  }
-  .partial-transcript {
-    color: #4a7ab5;
-  }
+  .confirmed-transcript { color: #8ab4f8; }
+  .partial-transcript { color: #4a7ab5; }
+  .placeholder { color: #333; font-style: italic; }
+  .confirmed { color: #e2e8f0; }
+  .partial { color: #64748b; }
 
-  .placeholder {
-    color: #333;
-    font-style: italic;
-  }
-  .confirmed {
-    color: #e2e8f0;
-  }
-  .partial {
-    color: #64748b;
-  }
-
-  .transcript-details {
-    margin-top: 20px;
-    font-size: 0.8rem;
-    color: #555;
-  }
-
-  .transcript-details summary {
-    cursor: pointer;
-    padding: 8px 0;
-    user-select: none;
-  }
-
-  .transcript-details p {
+  .raw-text {
     background: #111;
     border-radius: 8px;
     padding: 12px;
