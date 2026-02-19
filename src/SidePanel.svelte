@@ -1,9 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import type { AsrProvider, TranslatorType, TargetLanguage, SourceLanguage } from "./lib/types";
-  import { getUserId } from "./lib/settings";
-
-  const API_BASE_URL = "http://localhost:8000";
 
   let isCapturing = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -23,98 +20,37 @@
   let transcriptBox: HTMLDivElement;
   let translationBox: HTMLDivElement;
 
-  // History state
-  interface HistorySession {
-    id: string;
-    source_lang: string;
-    target_lang: string;
-    translator_type: string;
-    created_at: string;
-    ended_at: string | null;
-  }
+  // Auth state
+  let isLoggedIn = $state(false);
+  let userName = $state<string | undefined>();
+  let userEmail = $state<string | undefined>();
+  let userPicture = $state<string | undefined>();
+  let authLoading = $state(false);
 
-  interface SessionEntry {
-    id: number;
-    speaker: string;
-    source_text: string;
-    translated_text: string | null;
-    elapsed_ms: number;
-    sequence: number;
-    created_at: string;
-  }
-
-  interface SessionDetail extends HistorySession {
-    entries: SessionEntry[];
-  }
-
-  let sessions = $state<HistorySession[]>([]);
-  let selectedSession = $state<SessionDetail | null>(null);
-  let historyLoading = $state(false);
-  let historyError = $state<string | null>(null);
-
-  async function fetchSessions() {
-    historyLoading = true;
-    historyError = null;
-    selectedSession = null;
-    try {
-      const userId = await getUserId();
-      if (!userId) {
-        historyError = "No user ID found";
-        return;
+  function googleLogin() {
+    authLoading = true;
+    chrome.runtime.sendMessage({ type: "GOOGLE_LOGIN" }, (response) => {
+      authLoading = false;
+      if (response?.success) {
+        isLoggedIn = true;
+        userName = response.userName;
+        userEmail = response.userEmail;
+        userPicture = response.userPicture;
+      } else {
+        errorMessage = response?.error || "Login failed";
       }
-      const res = await fetch(`${API_BASE_URL}/history?user_id=${encodeURIComponent(userId)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      sessions = data.sessions || [];
-    } catch (e) {
-      historyError = `Failed to load history: ${e}`;
-    } finally {
-      historyLoading = false;
-    }
+    });
   }
 
-  async function fetchSessionDetail(sessionId: string) {
-    historyLoading = true;
-    historyError = null;
-    try {
-      const res = await fetch(`${API_BASE_URL}/history/${sessionId}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      selectedSession = await res.json();
-    } catch (e) {
-      historyError = `Failed to load session: ${e}`;
-    } finally {
-      historyLoading = false;
-    }
-  }
-
-  async function deleteSession(sessionId: string) {
-    historyLoading = true;
-    historyError = null;
-    try {
-      const res = await fetch(`${API_BASE_URL}/history/${sessionId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      selectedSession = null;
-      sessions = sessions.filter((s) => s.id !== sessionId);
-    } catch (e) {
-      historyError = `Failed to delete session: ${e}`;
-    } finally {
-      historyLoading = false;
-    }
-  }
-
-  function formatDate(iso: string): string {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  }
-
-  function formatDuration(start: string, end: string | null): string {
-    if (!end) return "in progress";
-    const ms = new Date(end).getTime() - new Date(start).getTime();
-    const sec = Math.floor(ms / 1000);
-    if (sec < 60) return `${sec}s`;
-    const min = Math.floor(sec / 60);
-    const remainSec = sec % 60;
-    return `${min}m ${remainSec}s`;
+  function googleLogout() {
+    chrome.runtime.sendMessage({ type: "GOOGLE_LOGOUT" }, (response) => {
+      if (response?.success) {
+        isLoggedIn = false;
+        userName = undefined;
+        userEmail = undefined;
+        userPicture = undefined;
+      }
+    });
   }
 
   const sourceLanguages: { code: string; name: string }[] = [
@@ -572,6 +508,15 @@
         selectedDelayMs = response.delayMs;
       }
     });
+
+    chrome.runtime.sendMessage({ type: "GET_AUTH_STATE" }, (response) => {
+      if (response) {
+        isLoggedIn = response.isLoggedIn;
+        userName = response.userName;
+        userEmail = response.userEmail;
+        userPicture = response.userPicture;
+      }
+    });
   });
 </script>
 
@@ -696,66 +641,27 @@
     <p class="raw-text">{transcript || "—"}</p>
   </details>
 
-  <!-- History -->
-  <details class="section-details" ontoggle={(e: Event) => { if ((e.target as HTMLDetailsElement).open && sessions.length === 0) fetchSessions(); }}>
-    <summary>History</summary>
-
-    {#if historyError}
-      <div class="history-error">{historyError}</div>
-    {/if}
-
-    {#if historyLoading}
-      <div class="history-loading">Loading...</div>
-    {:else if selectedSession}
-      <div class="session-detail">
-        <div class="session-detail-header">
-          <button class="back-btn" onclick={() => { selectedSession = null; }}>← Back</button>
-          <button class="delete-btn" onclick={() => deleteSession(selectedSession!.id)}>Delete</button>
-        </div>
-        <div class="session-meta">
-          <span>{formatDate(selectedSession.created_at)}</span>
-          <span class="meta-sep">·</span>
-          <span>{selectedSession.source_lang} → {selectedSession.target_lang}</span>
-          <span class="meta-sep">·</span>
-          <span>{formatDuration(selectedSession.created_at, selectedSession.ended_at)}</span>
-        </div>
-        <div class="entries-list">
-          {#each selectedSession.entries as entry}
-            <div class="entry-row">
-              {#if entry.speaker !== "default"}
-                <span class="entry-speaker">{entry.speaker}</span>
-              {/if}
-              <p class="entry-source">{entry.source_text}</p>
-              {#if entry.translated_text}
-                <p class="entry-translation">{entry.translated_text}</p>
-              {/if}
-            </div>
-          {/each}
-          {#if selectedSession.entries.length === 0}
-            <span class="placeholder">No entries</span>
+  <!-- Account -->
+  <details class="section-details">
+    <summary>Account</summary>
+    <div class="account-section">
+      {#if isLoggedIn}
+        <div class="user-profile">
+          {#if userPicture}
+            <img class="user-avatar" src={userPicture} alt="" />
           {/if}
+          <div class="user-info">
+            {#if userName}<span class="user-name">{userName}</span>{/if}
+            {#if userEmail}<span class="user-email">{userEmail}</span>{/if}
+          </div>
         </div>
-      </div>
-    {:else}
-      <div class="sessions-list">
-        {#each sessions as session}
-          <button class="session-row" onclick={() => fetchSessionDetail(session.id)}>
-            <div class="session-row-top">
-              <span class="session-date">{formatDate(session.created_at)}</span>
-              <span class="session-duration">{formatDuration(session.created_at, session.ended_at)}</span>
-            </div>
-            <div class="session-row-bottom">
-              <span>{session.source_lang} → {session.target_lang}</span>
-              <span class="session-translator">{session.translator_type}</span>
-            </div>
-          </button>
-        {/each}
-        {#if sessions.length === 0}
-          <span class="placeholder">No sessions found</span>
-        {/if}
-        <button class="refresh-btn" onclick={fetchSessions}>Refresh</button>
-      </div>
-    {/if}
+        <button class="logout-btn" onclick={googleLogout}>Sign out</button>
+      {:else}
+        <button class="login-btn" onclick={googleLogin} disabled={authLoading}>
+          {authLoading ? "Signing in..." : "Sign in with Google"}
+        </button>
+      {/if}
+    </div>
   </details>
 </div>
 
@@ -994,165 +900,78 @@
     line-height: 1.5;
   }
 
-  /* History */
-  .history-error {
-    color: #fca5a5;
-    font-size: 0.8rem;
-    padding: 8px 0;
-  }
-
-  .history-loading {
-    color: #666;
-    font-size: 0.8rem;
-    padding: 12px 0;
-    text-align: center;
-  }
-
-  .sessions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+  /* Account */
+  .account-section {
     margin-top: 8px;
   }
 
-  .session-row {
+  .user-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .user-info {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    background: #111;
-    border: 1px solid #222;
-    border-radius: 8px;
-    padding: 10px 12px;
-    cursor: pointer;
-    text-align: left;
-    color: #ccc;
-    font-size: 0.8rem;
-    transition: border-color 0.15s;
-    width: 100%;
+    gap: 2px;
   }
 
-  .session-row:hover {
-    border-color: #444;
-  }
-
-  .session-row-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .session-date {
+  .user-name {
     color: #e2e8f0;
+    font-size: 0.85rem;
     font-weight: 500;
   }
 
-  .session-duration {
+  .user-email {
     color: #666;
     font-size: 0.75rem;
   }
 
-  .session-row-bottom {
-    display: flex;
-    justify-content: space-between;
-    color: #888;
+  .login-btn {
+    width: 100%;
+    padding: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #fff;
+    background: #1d4ed8;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .login-btn:hover:not(:disabled) {
+    background: #2563eb;
+  }
+
+  .login-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .logout-btn {
+    width: 100%;
+    padding: 6px;
     font-size: 0.75rem;
-  }
-
-  .session-translator {
-    text-transform: capitalize;
-  }
-
-  .session-detail {
-    margin-top: 8px;
-  }
-
-  .session-detail-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-
-  .back-btn, .delete-btn, .refresh-btn {
-    padding: 5px 12px;
-    font-size: 0.75rem;
-    background: #1a1a1a;
     color: #aaa;
+    background: #1a1a1a;
     border: 1px solid #333;
     border-radius: 6px;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
   }
 
-  .back-btn:hover, .refresh-btn:hover {
+  .logout-btn:hover {
     background: #2a2a2a;
     color: #fff;
-  }
-
-  .delete-btn {
-    color: #f87171;
-    border-color: rgba(248, 113, 113, 0.3);
-  }
-
-  .delete-btn:hover {
-    background: rgba(220, 38, 38, 0.15);
-    color: #fca5a5;
-  }
-
-  .refresh-btn {
-    width: 100%;
-    margin-top: 4px;
-  }
-
-  .session-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.75rem;
-    color: #666;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-  }
-
-  .meta-sep {
-    color: #333;
-  }
-
-  .entries-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: 400px;
-    overflow-y: auto;
-  }
-
-  .entry-row {
-    background: #111;
-    border: 1px solid #222;
-    border-radius: 8px;
-    padding: 10px 12px;
-  }
-
-  .entry-speaker {
-    display: inline-block;
-    font-size: 0.7rem;
-    color: #8ab4f8;
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .entry-source {
-    margin: 0;
-    color: #8ab4f8;
-    font-size: 0.85rem;
-    line-height: 1.5;
-  }
-
-  .entry-translation {
-    margin: 4px 0 0;
-    color: #e2e8f0;
-    font-size: 0.9rem;
-    line-height: 1.5;
   }
 </style>
