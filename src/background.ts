@@ -15,6 +15,12 @@ import {
   setUpdateFrequency,
   getDelayMs,
   setDelayMs,
+  getUserId,
+  setUserId,
+  getAuthToken,
+  setAuthData,
+  getAuthState,
+  clearAuth,
 } from "./lib/settings";
 import type { AsrProvider, TranslatorType, TargetLanguage, SourceLanguage } from "./lib/types";
 
@@ -30,6 +36,7 @@ let sidePanelOpen = false;
 const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 const WS_BASE_URL = "ws://localhost:8000/stt";
 const PRODUCTION_WS_BASE_URL = "wss://fap-486860272818.us-west1.run.app/stt";
+const AUTH_API_URL = "http://localhost:8000/auth";
 
 function getWsUrl(
   provider: AsrProvider,
@@ -38,8 +45,17 @@ function getWsUrl(
   sourceLang: string,
   aggressiveness: number,
   updateFrequency: number,
+  userId?: string,
+  authToken?: string,
 ): string {
-  return `${WS_BASE_URL}/${provider}?target_lang=${encodeURIComponent(targetLang)}&source_lang=${encodeURIComponent(sourceLang)}&aggressiveness=${aggressiveness}&update_frequency=${updateFrequency}&translator=${encodeURIComponent(translator)}`;
+  let url = `${WS_BASE_URL}/${provider}?target_lang=${encodeURIComponent(targetLang)}&source_lang=${encodeURIComponent(sourceLang)}&aggressiveness=${aggressiveness}&update_frequency=${updateFrequency}&translator=${encodeURIComponent(translator)}`;
+  if (userId) {
+    url += `&user_id=${encodeURIComponent(userId)}`;
+  }
+  if (authToken) {
+    url += `&token=${encodeURIComponent(authToken)}`;
+  }
+  return url;
 }
 
 // ============ Offscreen Document ============
@@ -193,7 +209,9 @@ async function connectWebSocket() {
     const aggressiveness = await getAggressiveness();
     const updateFrequency = await getUpdateFrequency();
     audioDelayMs = await getDelayMs();
-    const wsUrl = getWsUrl(provider, translator, targetLang, sourceLang, aggressiveness, updateFrequency);
+    const userId = await getUserId();
+    const authToken = await getAuthToken();
+    const wsUrl = getWsUrl(provider, translator, targetLang, sourceLang, aggressiveness, updateFrequency, userId, authToken);
     console.log(`🔌 Connecting to WebSocket (${provider})...`);
     streamer = new AudioStreamer();
 
@@ -530,6 +548,57 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
 
+  if (msg.type === "GOOGLE_LOGIN") {
+    const extensionId = chrome.runtime.id;
+    const redirectUri = `https://${extensionId}.chromiumapp.org/`;
+    const callbackUrl = `${AUTH_API_URL}/google/callback`;
+    const loginUrl = `${AUTH_API_URL}/google/login?redirect_uri=${encodeURIComponent(redirectUri)}&callback_url=${encodeURIComponent(callbackUrl)}`;
+
+    chrome.identity.launchWebAuthFlow(
+      { url: loginUrl, interactive: true },
+      async (responseUrl) => {
+        if (chrome.runtime.lastError || !responseUrl) {
+          console.error("Auth failed:", chrome.runtime.lastError?.message);
+          sendResponse({ success: false, error: chrome.runtime.lastError?.message || "Auth cancelled" });
+          return;
+        }
+        try {
+          const url = new URL(responseUrl);
+          const token = url.searchParams.get("token");
+          const name = url.searchParams.get("name") || undefined;
+          const email = url.searchParams.get("email") || undefined;
+          const picture = url.searchParams.get("picture") || undefined;
+          if (token) {
+            await setAuthData(token, name, email, picture);
+            sendResponse({ success: true, userName: name, userEmail: email, userPicture: picture });
+          } else {
+            sendResponse({ success: false, error: "No token received" });
+          }
+        } catch (e) {
+          sendResponse({ success: false, error: String(e) });
+        }
+      },
+    );
+    return true;
+  }
+
+  if (msg.type === "GOOGLE_LOGOUT") {
+    clearAuth().then(() => sendResponse({ success: true }));
+    return true;
+  }
+
+  if (msg.type === "GET_AUTH_STATE") {
+    getAuthState().then((state) => {
+      sendResponse({
+        isLoggedIn: !!state.authToken,
+        userName: state.userName,
+        userEmail: state.userEmail,
+        userPicture: state.userPicture,
+      });
+    });
+    return true;
+  }
+
   if (msg.type === "TOGGLE_SIDE_PANEL") {
     const tabId = msg.tabId;
     if (tabId) {
@@ -548,6 +617,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return false;
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("✅ Extension installed");
+chrome.runtime.onInstalled.addListener(async () => {
+  const existingId = await getUserId();
+  if (!existingId) {
+    const uid = crypto.randomUUID();
+    await setUserId(uid);
+    console.log("✅ Extension installed, generated user ID:", uid);
+  } else {
+    console.log("✅ Extension updated, existing user ID:", existingId);
+  }
 });

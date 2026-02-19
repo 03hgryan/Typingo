@@ -23,7 +23,10 @@ export type MessageToBackground =
   | { type: "SET_UPDATE_FREQUENCY"; updateFrequency: number }
   | { type: "GET_DELAY_MS" }
   | { type: "SET_DELAY_MS"; delayMs: number }
-  | { type: "AUDIO_CHUNK"; chunk: { pcm: number[]; chunk_index: number; duration_ms: number } };
+  | { type: "AUDIO_CHUNK"; chunk: { pcm: number[]; chunk_index: number; duration_ms: number } }
+  | { type: "GOOGLE_LOGIN" }
+  | { type: "GOOGLE_LOGOUT" }
+  | { type: "GET_AUTH_STATE" };
 
 export type MessageFromBackground =
   | { type: "CAPTURE_STARTED" }
@@ -35,7 +38,8 @@ export type MessageFromBackground =
   | { type: "COMBINED"; text: string }
   | { type: "TRANSLATION"; text: string }
   | { type: "TRANSCRIPT"; text: string }
-  | { type: "ERROR"; message: string };
+  | { type: "ERROR"; message: string }
+  | { type: "AUTH_STATE"; isLoggedIn: boolean; userName?: string; userEmail?: string; userPicture?: string };
 
 // Messages to content script
 export type MessageToContent =
@@ -115,6 +119,11 @@ export interface StorageSettings {
   aggressiveness?: number;
   updateFrequency?: number;
   delayMs?: number;
+  userId?: string;
+  authToken?: string;
+  userName?: string;
+  userEmail?: string;
+  userPicture?: string;
 }
 
 export const DEFAULT_CHUNK_DURATION_SEC = 0.32;

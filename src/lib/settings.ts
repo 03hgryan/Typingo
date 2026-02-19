@@ -1,6 +1,20 @@
 // settings.ts - Chrome storage helpers
 import { DEFAULT_CHUNK_DURATION_SEC, DEFAULT_ASR_PROVIDER, DEFAULT_TRANSLATOR, DEFAULT_TARGET_LANG, DEFAULT_SOURCE_LANG, DEFAULT_AGGRESSIVENESS, DEFAULT_UPDATE_FREQUENCY, DEFAULT_DELAY_MS, type StorageSettings, type AsrProvider, type TranslatorType, type TargetLanguage, type SourceLanguage } from "./types";
 
+export async function getUserId(): Promise<string | undefined> {
+  return new Promise<string | undefined>((resolve) => {
+    chrome.storage.local.get(["userId"], (result: StorageSettings) => {
+      resolve(result.userId);
+    });
+  });
+}
+
+export async function setUserId(userId: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    chrome.storage.local.set({ userId }, () => resolve());
+  });
+}
+
 export async function getChunkDuration(): Promise<number> {
   return new Promise<number>((resolve) => {
     chrome.storage.local.get(["chunkDurationSec"], (result: StorageSettings) => {
@@ -110,6 +124,39 @@ export async function getDelayMs(): Promise<number> {
 export async function setDelayMs(delayMs: number): Promise<void> {
   return new Promise<void>((resolve) => {
     chrome.storage.local.set({ delayMs }, () => resolve());
+  });
+}
+
+export async function getAuthToken(): Promise<string | undefined> {
+  return new Promise<string | undefined>((resolve) => {
+    chrome.storage.local.get(["authToken"], (result: StorageSettings) => {
+      resolve(result.authToken);
+    });
+  });
+}
+
+export async function setAuthData(token: string, name?: string, email?: string, picture?: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    chrome.storage.local.set({ authToken: token, userName: name, userEmail: email, userPicture: picture }, () => resolve());
+  });
+}
+
+export async function getAuthState(): Promise<{ authToken?: string; userName?: string; userEmail?: string; userPicture?: string }> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["authToken", "userName", "userEmail", "userPicture"], (result: StorageSettings) => {
+      resolve({
+        authToken: result.authToken,
+        userName: result.userName,
+        userEmail: result.userEmail,
+        userPicture: result.userPicture,
+      });
+    });
+  });
+}
+
+export async function clearAuth(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    chrome.storage.local.remove(["authToken", "userName", "userEmail", "userPicture"], () => resolve());
   });
 }
 

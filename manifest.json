@@ -7,7 +7,7 @@
     "default_icon": "favicon-48x48.png",
     "default_popup": "index.html"
   },
-  "permissions": ["activeTab", "tabCapture", "sidePanel", "offscreen", "storage"],
+  "permissions": ["activeTab", "tabCapture", "sidePanel", "offscreen", "storage", "identity"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"

@@ -3,6 +3,35 @@
 
   let isCapturing = $state(false);
   let errorMessage = $state<string | null>(null);
+  let isLoggedIn = $state(false);
+  let userName = $state<string | undefined>(undefined);
+  let userEmail = $state<string | undefined>(undefined);
+  let userPicture = $state<string | undefined>(undefined);
+  let authLoading = $state(false);
+
+  function handleLogin() {
+    authLoading = true;
+    chrome.runtime.sendMessage({ type: "GOOGLE_LOGIN" }, (response) => {
+      authLoading = false;
+      if (response?.success) {
+        isLoggedIn = true;
+        userName = response.userName;
+        userEmail = response.userEmail;
+        userPicture = response.userPicture;
+      } else {
+        errorMessage = response?.error || "Login failed";
+      }
+    });
+  }
+
+  function handleLogout() {
+    chrome.runtime.sendMessage({ type: "GOOGLE_LOGOUT" }, () => {
+      isLoggedIn = false;
+      userName = undefined;
+      userEmail = undefined;
+      userPicture = undefined;
+    });
+  }
 
   async function toggleCapture() {
     if (!isCapturing) {
@@ -51,16 +80,51 @@
         isCapturing = true;
       }
     });
+
+    chrome.runtime.sendMessage({ type: "GET_AUTH_STATE" }, (response) => {
+      if (response?.isLoggedIn) {
+        isLoggedIn = true;
+        userName = response.userName;
+        userEmail = response.userEmail;
+        userPicture = response.userPicture;
+      }
+    });
   });
 </script>
 
 <div class="popup">
   <span class="name">Typing<span class="quote">"</span>o<span class="quote">"</span></span>
-  <!-- <span class="name">Typing'o'</span> -->
+
+  {#if isLoggedIn}
+    <div class="user-info" title={userEmail}>
+      {#if userPicture}
+        <img class="avatar" src={userPicture} alt="" referrerpolicy="no-referrer" />
+      {/if}
+      <span class="user-name">{userName || userEmail}</span>
+      <button class="logout-btn" onclick={handleLogout} title="Sign out">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </button>
+    </div>
+  {:else}
+    <button class="sign-in-btn" onclick={handleLogin} disabled={authLoading}>
+      {authLoading ? "..." : "Sign in"}
+    </button>
+  {/if}
+
   <span class="status" class:active={isCapturing}>
     {isCapturing ? "Live" : "Idle"}
   </span>
-  <button class="start-btn" class:active={isCapturing} onclick={toggleCapture}>
+  <button
+    class="start-btn"
+    class:active={isCapturing}
+    onclick={toggleCapture}
+    disabled={!isLoggedIn && !isCapturing}
+    title={!isLoggedIn ? "Sign in to start" : ""}
+  >
     {isCapturing ? "Stop" : "Start"}
   </button>
   <button class="settings-btn" onclick={openSettings} title="Settings">
@@ -93,9 +157,6 @@
     gap: 10px;
     padding: 10px 14px;
     font-family: "Inter", system-ui, sans-serif;
-    /* font-family: "Stalinist One", system-ui, sans-serif; */
-    /* font-family: "Google Sans Flex", system-ui, sans-serif; */
-
     background: #0a0a0a;
     color: #fff;
     white-space: nowrap;
@@ -109,7 +170,69 @@
 
   .quote {
     font-weight: 500;
-    /* color: #666; */
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+  }
+
+  .user-name {
+    font-size: 0.7rem;
+    color: #aaa;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    color: #666;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .logout-btn:hover {
+    color: #ef4444;
+  }
+
+  .sign-in-btn {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border: 1px solid #333;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #1a1a1a;
+    color: #ccc;
+  }
+
+  .sign-in-btn:hover {
+    background: #222;
+    color: #fff;
+  }
+
+  .sign-in-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .settings-btn {
@@ -156,6 +279,11 @@
     background: #ef4444;
   }
 
+  .start-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
   .status {
     font-weight: 400;
     font-size: 0.65rem;
@@ -165,7 +293,6 @@
     background: #1a1a1a;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-left: auto;
   }
 
   .status.active {
