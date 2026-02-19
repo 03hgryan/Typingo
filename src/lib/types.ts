@@ -77,8 +77,8 @@ export type WSMessage = WSCombinedMessage | WSTranslationMessage | WSPartialMess
 export type AsrProvider = "elevenlabs" | "speechmatics";
 export const DEFAULT_ASR_PROVIDER: AsrProvider = "elevenlabs";
 
-// Target language
-export type TargetLanguage = "English" | "Korean" | "Japanese" | "Chinese" | "Spanish" | "French" | "German";
+// Target language (all DeepL-supported target languages)
+export type TargetLanguage = string;
 export const DEFAULT_TARGET_LANG: TargetLanguage = "Korean";
 
 // Source language (for Speechmatics ASR)
@@ -91,6 +91,10 @@ export type SourceLanguage =
   | "es" | "sw" | "sv" | "tl" | "ta" | "en_ta" | "th" | "tr" | "uk"
   | "ur" | "ug" | "vi" | "cy";
 export const DEFAULT_SOURCE_LANG: SourceLanguage = "en";
+
+// Translator type
+export type TranslatorType = "realtime" | "deepl" | "standard";
+export const DEFAULT_TRANSLATOR: TranslatorType = "deepl";
 
 // Aggressiveness (1 = high/fast, 2 = low/accurate)
 export const DEFAULT_AGGRESSIVENESS = 1;
@@ -105,6 +109,7 @@ export const DEFAULT_DELAY_MS = 0;
 export interface StorageSettings {
   chunkDurationSec?: number;
   asrProvider?: AsrProvider;
+  translator?: TranslatorType;
   targetLang?: TargetLanguage;
   sourceLang?: SourceLanguage;
   aggressiveness?: number;

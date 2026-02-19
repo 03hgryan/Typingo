@@ -1,5 +1,5 @@
 // settings.ts - Chrome storage helpers
-import { DEFAULT_CHUNK_DURATION_SEC, DEFAULT_ASR_PROVIDER, DEFAULT_TARGET_LANG, DEFAULT_SOURCE_LANG, DEFAULT_AGGRESSIVENESS, DEFAULT_UPDATE_FREQUENCY, DEFAULT_DELAY_MS, type StorageSettings, type AsrProvider, type TargetLanguage, type SourceLanguage } from "./types";
+import { DEFAULT_CHUNK_DURATION_SEC, DEFAULT_ASR_PROVIDER, DEFAULT_TRANSLATOR, DEFAULT_TARGET_LANG, DEFAULT_SOURCE_LANG, DEFAULT_AGGRESSIVENESS, DEFAULT_UPDATE_FREQUENCY, DEFAULT_DELAY_MS, type StorageSettings, type AsrProvider, type TranslatorType, type TargetLanguage, type SourceLanguage } from "./types";
 
 export async function getChunkDuration(): Promise<number> {
   return new Promise<number>((resolve) => {
@@ -54,6 +54,20 @@ export async function getSourceLang(): Promise<SourceLanguage> {
 export async function setSourceLang(lang: SourceLanguage): Promise<void> {
   return new Promise<void>((resolve) => {
     chrome.storage.local.set({ sourceLang: lang }, () => resolve());
+  });
+}
+
+export async function getTranslator(): Promise<TranslatorType> {
+  return new Promise<TranslatorType>((resolve) => {
+    chrome.storage.local.get(["translator"], (result: StorageSettings) => {
+      resolve(result.translator ?? DEFAULT_TRANSLATOR);
+    });
+  });
+}
+
+export async function setTranslator(translator: TranslatorType): Promise<void> {
+  return new Promise<void>((resolve) => {
+    chrome.storage.local.set({ translator }, () => resolve());
   });
 }
 

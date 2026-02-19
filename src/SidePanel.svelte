@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import type { AsrProvider, TargetLanguage, SourceLanguage } from "./lib/types";
+  import type { AsrProvider, TranslatorType, TargetLanguage, SourceLanguage } from "./lib/types";
 
   let isCapturing = $state(false);
   let errorMessage = $state<string | null>(null);
   let diarization = $state(false);
+  let selectedTranslator = $state<TranslatorType>("deepl");
   let selectedSourceLang = $state<SourceLanguage>("en");
   let selectedLang = $state<TargetLanguage>("Korean");
   let selectedAggressiveness = $state(1);
@@ -82,16 +83,202 @@
     { code: "cy", name: "Welsh" },
   ];
 
-  const targetLanguages = ["English", "Korean", "Japanese", "Chinese", "Spanish", "French", "German"];
+  const targetLanguages = [
+    "Acehnese",
+    "Afrikaans",
+    "Albanian",
+    "Arabic",
+    "Aragonese",
+    "Armenian",
+    "Assamese",
+    "Aymara",
+    "Azerbaijani",
+    "Bashkir",
+    "Basque",
+    "Belarusian",
+    "Bengali",
+    "Bhojpuri",
+    "Bosnian",
+    "Breton",
+    "Bulgarian",
+    "Burmese",
+    "Cantonese",
+    "Catalan",
+    "Cebuano",
+    "Chinese (Simplified)",
+    "Chinese (Traditional)",
+    "Croatian",
+    "Czech",
+    "Danish",
+    "Dari",
+    "Dutch",
+    "English",
+    "English (British)",
+    "Esperanto",
+    "Estonian",
+    "Finnish",
+    "French",
+    "Galician",
+    "Georgian",
+    "German",
+    "Greek",
+    "Guarani",
+    "Gujarati",
+    "Haitian Creole",
+    "Hausa",
+    "Hebrew",
+    "Hindi",
+    "Hungarian",
+    "Icelandic",
+    "Igbo",
+    "Indonesian",
+    "Irish",
+    "Italian",
+    "Japanese",
+    "Javanese",
+    "Kapampangan",
+    "Kazakh",
+    "Konkani",
+    "Korean",
+    "Kurdish (Kurmanji)",
+    "Kurdish (Sorani)",
+    "Kyrgyz",
+    "Latin",
+    "Latvian",
+    "Lingala",
+    "Lithuanian",
+    "Lombard",
+    "Luxembourgish",
+    "Macedonian",
+    "Maithili",
+    "Malagasy",
+    "Malay",
+    "Malayalam",
+    "Maltese",
+    "Maori",
+    "Marathi",
+    "Mongolian",
+    "Nepali",
+    "Norwegian",
+    "Occitan",
+    "Oromo",
+    "Pangasinan",
+    "Pashto",
+    "Persian",
+    "Polish",
+    "Portuguese (Brazilian)",
+    "Portuguese (European)",
+    "Punjabi",
+    "Quechua",
+    "Romanian",
+    "Russian",
+    "Sanskrit",
+    "Serbian",
+    "Sesotho",
+    "Sicilian",
+    "Slovak",
+    "Slovenian",
+    "Spanish",
+    "Spanish (Latin American)",
+    "Sundanese",
+    "Swahili",
+    "Swedish",
+    "Tagalog",
+    "Tajik",
+    "Tamil",
+    "Tatar",
+    "Telugu",
+    "Thai",
+    "Tsonga",
+    "Tswana",
+    "Turkish",
+    "Turkmen",
+    "Ukrainian",
+    "Urdu",
+    "Uzbek",
+    "Vietnamese",
+    "Welsh",
+    "Wolof",
+    "Xhosa",
+    "Yiddish",
+    "Zulu",
+  ];
 
-  const sourceCodeToTargetName: Record<string, string> = {
-    en: "English", ko: "Korean", ja: "Japanese", cmn: "Chinese", yue: "Chinese",
-    es: "Spanish", fr: "French", de: "German",
+  // Migrate old stored target language names to new names
+  const targetLangAliases: Record<string, string> = {
+    "Chinese": "Chinese (Simplified)",
   };
-  const targetNameToSourceCodes: Record<string, string[]> = {
-    English: ["en"], Korean: ["ko"], Japanese: ["ja"], Chinese: ["cmn", "yue"],
-    Spanish: ["es"], French: ["fr"], German: ["de"],
+
+  // Maps source language code → target name(s) it overlaps with (same language)
+  const sourceCodeToTargetNames: Record<string, string[]> = {
+    ar: ["Arabic"],
+    ba: ["Bashkir"],
+    eu: ["Basque"],
+    be: ["Belarusian"],
+    bn: ["Bengali"],
+    bg: ["Bulgarian"],
+    yue: ["Cantonese", "Chinese (Simplified)", "Chinese (Traditional)"],
+    ca: ["Catalan"],
+    hr: ["Croatian"],
+    cs: ["Czech"],
+    da: ["Danish"],
+    nl: ["Dutch"],
+    en: ["English", "English (British)"],
+    eo: ["Esperanto"],
+    et: ["Estonian"],
+    fi: ["Finnish"],
+    fr: ["French"],
+    gl: ["Galician"],
+    de: ["German"],
+    el: ["Greek"],
+    he: ["Hebrew"],
+    hi: ["Hindi"],
+    hu: ["Hungarian"],
+    id: ["Indonesian"],
+    ga: ["Irish"],
+    it: ["Italian"],
+    ja: ["Japanese"],
+    ko: ["Korean"],
+    lv: ["Latvian"],
+    lt: ["Lithuanian"],
+    ms: ["Malay"],
+    en_ms: ["Malay", "English", "English (British)"],
+    mt: ["Maltese"],
+    cmn: ["Chinese (Simplified)", "Chinese (Traditional)"],
+    cmn_en: ["Chinese (Simplified)", "Chinese (Traditional)", "English", "English (British)"],
+    cmn_en_ms_ta: ["Chinese (Simplified)", "Chinese (Traditional)", "English", "English (British)", "Malay", "Tamil"],
+    mr: ["Marathi"],
+    mn: ["Mongolian"],
+    no: ["Norwegian"],
+    fa: ["Persian"],
+    pl: ["Polish"],
+    pt: ["Portuguese (Brazilian)", "Portuguese (European)"],
+    ro: ["Romanian"],
+    ru: ["Russian"],
+    sk: ["Slovak"],
+    sl: ["Slovenian"],
+    es: ["Spanish", "Spanish (Latin American)"],
+    sw: ["Swahili"],
+    sv: ["Swedish"],
+    tl: ["Tagalog"],
+    ta: ["Tamil"],
+    en_ta: ["Tamil", "English", "English (British)"],
+    th: ["Thai"],
+    tr: ["Turkish"],
+    uk: ["Ukrainian"],
+    ur: ["Urdu"],
+    vi: ["Vietnamese"],
+    cy: ["Welsh"],
   };
+
+  // Reverse: target name → source codes that overlap
+  const targetNameToSourceCodes: Record<string, string[]> = {};
+  for (const [code, names] of Object.entries(sourceCodeToTargetNames)) {
+    for (const name of names) {
+      if (!targetNameToSourceCodes[name]) targetNameToSourceCodes[name] = [];
+      targetNameToSourceCodes[name].push(code);
+    }
+  }
 
   $effect(() => {
     confirmedTranscript;
@@ -123,6 +310,15 @@
     chrome.runtime.sendMessage({ type: "SET_ASR_PROVIDER", provider }, (response) => {
       if (response?.success) {
         diarization = checked;
+      }
+    });
+  }
+
+  function onTranslatorChange(e: Event) {
+    const translator = (e.target as HTMLSelectElement).value as TranslatorType;
+    chrome.runtime.sendMessage({ type: "SET_TRANSLATOR", translator }, (response) => {
+      if (response?.success) {
+        selectedTranslator = translator;
       }
     });
   }
@@ -231,9 +427,19 @@
       }
     });
 
+    chrome.runtime.sendMessage({ type: "GET_TRANSLATOR" }, (response) => {
+      if (response?.translator) {
+        selectedTranslator = response.translator;
+      }
+    });
+
     chrome.runtime.sendMessage({ type: "GET_TARGET_LANG" }, (response) => {
       if (response?.lang) {
-        selectedLang = response.lang;
+        const resolved = targetLangAliases[response.lang] ?? response.lang;
+        if (resolved !== response.lang) {
+          chrome.runtime.sendMessage({ type: "SET_TARGET_LANG", lang: resolved });
+        }
+        selectedLang = resolved;
       }
     });
 
@@ -284,7 +490,7 @@
       <label for="sourceLang">Source</label>
       <select id="sourceLang" value={selectedSourceLang} onchange={onSourceLangChange} disabled={isCapturing}>
         {#each sourceLanguages as lang}
-          <option value={lang.code} disabled={sourceCodeToTargetName[lang.code] === selectedLang}>{lang.name}</option>
+          <option value={lang.code} disabled={sourceCodeToTargetNames[lang.code]?.includes(selectedLang)}>{lang.name}</option>
         {/each}
       </select>
     </div>
@@ -296,6 +502,14 @@
       {#each targetLanguages as lang}
         <option value={lang} disabled={targetNameToSourceCodes[lang]?.includes(selectedSourceLang)}>{lang}</option>
       {/each}
+    </select>
+  </div>
+
+  <div class="setting-row">
+    <label for="translator">Translation Quality</label>
+    <select id="translator" value={selectedTranslator} onchange={onTranslatorChange} disabled={isCapturing}>
+      <option value="deepl">Quality</option>
+      <option value="realtime">Speed</option>
     </select>
   </div>
 

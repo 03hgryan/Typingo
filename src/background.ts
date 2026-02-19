@@ -3,6 +3,8 @@ import { AudioStreamer } from "./lib/audioStreamer";
 import {
   getAsrProvider,
   setAsrProvider,
+  getTranslator,
+  setTranslator,
   getTargetLang,
   setTargetLang,
   getSourceLang,
@@ -14,7 +16,7 @@ import {
   getDelayMs,
   setDelayMs,
 } from "./lib/settings";
-import type { AsrProvider, TargetLanguage, SourceLanguage } from "./lib/types";
+import type { AsrProvider, TranslatorType, TargetLanguage, SourceLanguage } from "./lib/types";
 
 console.log("Background script is running");
 
@@ -29,8 +31,15 @@ const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 const WS_BASE_URL = "ws://localhost:8000/stt";
 const PRODUCTION_WS_BASE_URL = "wss://fap-486860272818.us-west1.run.app/stt";
 
-function getWsUrl(provider: AsrProvider, targetLang: string, sourceLang: string, aggressiveness: number, updateFrequency: number): string {
-  return `${WS_BASE_URL}/${provider}?target_lang=${encodeURIComponent(targetLang)}&source_lang=${encodeURIComponent(sourceLang)}&aggressiveness=${aggressiveness}&update_frequency=${updateFrequency}`;
+function getWsUrl(
+  provider: AsrProvider,
+  translator: TranslatorType,
+  targetLang: string,
+  sourceLang: string,
+  aggressiveness: number,
+  updateFrequency: number,
+): string {
+  return `${WS_BASE_URL}/${provider}?target_lang=${encodeURIComponent(targetLang)}&source_lang=${encodeURIComponent(sourceLang)}&aggressiveness=${aggressiveness}&update_frequency=${updateFrequency}&translator=${encodeURIComponent(translator)}`;
 }
 
 // ============ Offscreen Document ============
@@ -174,12 +183,13 @@ async function connectWebSocket() {
 
   try {
     const provider = await getAsrProvider();
+    const translator = await getTranslator();
     const targetLang = await getTargetLang();
     const sourceLang = await getSourceLang();
     const aggressiveness = await getAggressiveness();
     const updateFrequency = await getUpdateFrequency();
     audioDelayMs = await getDelayMs();
-    const wsUrl = getWsUrl(provider, targetLang, sourceLang, aggressiveness, updateFrequency);
+    const wsUrl = getWsUrl(provider, translator, targetLang, sourceLang, aggressiveness, updateFrequency);
     console.log(`🔌 Connecting to WebSocket (${provider})...`);
     streamer = new AudioStreamer();
 
@@ -317,7 +327,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
           isCapturing = true;
 
-          chrome.runtime.sendMessage({ type: "START_OFFSCREEN_CAPTURE", streamId, delayMs: audioDelayMs }).catch(() => {});
+          chrome.runtime
+            .sendMessage({ type: "START_OFFSCREEN_CAPTURE", streamId, delayMs: audioDelayMs })
+            .catch(() => {});
           chrome.tabs.sendMessage(tab.id!, { type: "START_VIDEO_DELAY", delayMs: audioDelayMs }).catch(() => {});
           chrome.runtime.sendMessage({ type: "CAPTURE_STARTED" }).catch(() => {});
 
@@ -393,6 +405,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return false;
     }
     setAsrProvider(msg.provider).then(() => sendResponse({ success: true }));
+    return true;
+  }
+
+  if (msg.type === "GET_TRANSLATOR") {
+    getTranslator().then((translator) => sendResponse({ translator }));
+    return true;
+  }
+
+  if (msg.type === "SET_TRANSLATOR") {
+    if (isCapturing) {
+      sendResponse({ success: false, error: "Cannot change translator while translating" });
+      return false;
+    }
+    setTranslator(msg.translator).then(() => sendResponse({ success: true }));
     return true;
   }
 
@@ -487,4 +513,3 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener(() => {
   console.log("✅ Extension installed");
 });
-

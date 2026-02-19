@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Typing'o'",
+  "name": "Typingo",
   "version": "1.0",
   "description": "Real time streaming media translation",
   "action": {
     "default_icon": "favicon-48x48.png",
     "default_popup": "index.html"
   },
-  "permissions": ["activeTab", "tabs", "tabCapture", "sidePanel", "offscreen", "storage"],
+  "permissions": ["activeTab", "tabCapture", "sidePanel", "offscreen", "storage"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
