@@ -118,3 +118,16 @@ export interface StorageSettings {
 }
 
 export const DEFAULT_CHUNK_DURATION_SEC = 0.32;
+
+// WebSocket message from backend (loosely typed; dispatched by data.type in background.ts)
+export interface WebSocketMessage {
+  type: string;
+  speaker?: string;
+  text?: string;
+  delta?: string;
+  generation?: number;
+  elapsed_ms?: number;
+  message?: string;
+  data?: unknown;
+  [key: string]: unknown;
+}

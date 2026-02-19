@@ -124,6 +124,8 @@ interface SpeakerState {
   partialStartElapsed: number; // elapsed_ms when current partial sequence began
   awaitingNewPartial: boolean; // true at start and after each confirmation
   transcriptConfirmCount: number; // incremented on each confirmation; partials scheduled before are stale
+  deltaGeneration: number; // tracks current partial_translation_delta generation
+  deltaAccumulated: string; // accumulated delta text for current generation
 }
 
 const speakerTranslation: Record<string, SpeakerState> = {};
@@ -138,6 +140,8 @@ function getSpeakerState(map: Record<string, SpeakerState>, speaker: string): Sp
       partialStartElapsed: -1,
       awaitingNewPartial: true,
       transcriptConfirmCount: 0,
+      deltaGeneration: -1,
+      deltaAccumulated: "",
     };
   return map[speaker];
 }
@@ -254,6 +258,29 @@ async function connectWebSocket() {
         const elapsed = data.elapsed_ms || 0;
         const st = getSpeakerState(speakerTranslation, speaker);
         st.partial = data.text || "";
+        st.deltaAccumulated = ""; // reset delta accumulation on full partial
+        const { confirmed, partial } = st;
+        scheduleCaption(elapsed, () => {
+          chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", speaker, text: partial }).catch(() => {});
+          sendTranslationCaption(confirmed, partial, speaker);
+        });
+      }
+
+      if (data.type === "partial_translation_delta") {
+        const speaker = data.speaker || "default";
+        const elapsed = data.elapsed_ms || 0;
+        const generation = data.generation ?? -1;
+        const delta = data.delta || "";
+        const st = getSpeakerState(speakerTranslation, speaker);
+
+        // New generation: reset accumulated delta
+        if (generation !== st.deltaGeneration) {
+          st.deltaGeneration = generation;
+          st.deltaAccumulated = "";
+        }
+        st.deltaAccumulated += delta;
+        st.partial = st.deltaAccumulated;
+
         const { confirmed, partial } = st;
         scheduleCaption(elapsed, () => {
           chrome.runtime.sendMessage({ type: "PARTIAL_TRANSLATION", speaker, text: partial }).catch(() => {});
