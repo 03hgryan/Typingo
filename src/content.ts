@@ -208,6 +208,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === "CLEAR_ACCUMULATED") {
+    for (const s of Object.values(speakers)) {
+      s.accumulatedTranslation = "";
+      s.partialTranslation = "";
+      s.displayConfirmedTranslation = "";
+      s.displayPartialTranslation = "";
+      s.currentTranscript = "";
+      s.currentTranslation = "";
+      updateSpeakerCaption(s);
+    }
+    return false;
+  }
+
   if (message.type === "REMOVE_CAPTION") {
     removeAllCaptions();
     return false;

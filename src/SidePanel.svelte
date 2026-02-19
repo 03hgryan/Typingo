@@ -304,6 +304,15 @@
     errorMessage = null;
   }
 
+  function clearSession() {
+    transcript = "";
+    confirmedTranscript = "";
+    partialTranscriptText = "";
+    confirmedTranslation = "";
+    partialTranslation = "";
+    chrome.runtime.sendMessage({ type: "CLEAR_SESSION" });
+  }
+
   function onDiarizationChange(e: Event) {
     const checked = (e.target as HTMLInputElement).checked;
     const provider: AsrProvider = checked ? "speechmatics" : "elevenlabs";
@@ -543,6 +552,10 @@
     </select>
   </div>
 
+  <button class="clear-btn" onclick={clearSession} disabled={!isCapturing && !confirmedTranscript && !confirmedTranslation}>
+    Clear Session
+  </button>
+
   {#if errorMessage}
     <div class="error">
       <span>{errorMessage}</span>
@@ -713,6 +726,30 @@
 
   .toggle input:disabled + .slider {
     opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .clear-btn {
+    width: 100%;
+    padding: 8px;
+    margin-top: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #aaa;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .clear-btn:hover:not(:disabled) {
+    background: #2a2a2a;
+    color: #fff;
+  }
+
+  .clear-btn:disabled {
+    opacity: 0.3;
     cursor: not-allowed;
   }
 

@@ -519,6 +519,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "CLEAR_SESSION") {
+    clearCaptionTimeouts();
+    for (const key of Object.keys(speakerTranslation)) delete speakerTranslation[key];
+    for (const key of Object.keys(speakerTranscript)) delete speakerTranscript[key];
+    if (activeTabId) {
+      chrome.tabs.sendMessage(activeTabId, { type: "CLEAR_ACCUMULATED" }).catch(() => {});
+    }
+    sendResponse({ success: true });
+    return false;
+  }
+
   if (msg.type === "TOGGLE_SIDE_PANEL") {
     const tabId = msg.tabId;
     if (tabId) {
